@@ -59,6 +59,8 @@ jobs:
           sudo --preserve-env=PASSWORD \
             KERNEL_PKG_DIR="$PWD/kernel-pkg" \
             build/build-image.sh "$PWD/out" 2>&1 | tee build.log
+          # the script runs as root; the next steps run as the runner user
+          sudo chown -R "$(id -u):$(id -g)" out
 
       # Saved even when a later step fails, so a retry skips the kernel build
       - name: Save the kernel package
@@ -103,6 +105,8 @@ jobs:
         run: |
           [ -f build.log ] || exit 0
           grep -E '^=== ' build.log | tail -n 3 | sed 's/^/::notice title=Last stages::/'
-          tail -n 60 build.log | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}' > tail.txt
+          # rsync and curl redraw progress with \r; keep only the last redraw
+          sed 's/.*\r//' build.log | tail -n 60 | cut -c1-300 |
+            sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}' > tail.txt
           echo "::error title=Build log (last 60 lines)::$(cat tail.txt)"
 

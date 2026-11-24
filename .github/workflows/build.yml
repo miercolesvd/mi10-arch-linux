@@ -45,7 +45,8 @@ jobs:
       # The kernel takes about an hour on a 4-core runner. Keep the built
       # package until anything under pkgbuilds/linux-xiaomi-umi changes.
       - name: Restore the kernel package
-        uses: actions/cache@v4
+        id: kernel-cache
+        uses: actions/cache/restore@v4
         with:
           path: kernel-pkg
           key: kernel-${{ hashFiles('pkgbuilds/linux-xiaomi-umi/**') }}
@@ -58,6 +59,14 @@ jobs:
           sudo --preserve-env=PASSWORD \
             KERNEL_PKG_DIR="$PWD/kernel-pkg" \
             build/build-image.sh "$PWD/out" 2>&1 | tee build.log
+
+      # Saved even when a later step fails, so a retry skips the kernel build
+      - name: Save the kernel package
+        if: always() && steps.kernel-cache.outputs.cache-hit != 'true' && hashFiles('kernel-pkg/*') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: kernel-pkg
+          key: kernel-${{ hashFiles('pkgbuilds/linux-xiaomi-umi/**') }}
 
       - name: Compress the system image
         run: |

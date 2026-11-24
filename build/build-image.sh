@@ -28,7 +28,9 @@ ROOT=$WORK/rootfs
 PASSWORD=${PASSWORD:-147147}
 KERNEL_PKG_DIR=${KERNEL_PKG_DIR:-}
 ALARM_TARBALL=ArchLinuxARM-aarch64-latest.tar.gz
-ALARM_URL=https://os.archlinuxarm.org/os/$ALARM_TARBALL
+# Plain HTTP: the HTTPS mirrors have mismatched certificates. The download
+# is checked against the Arch Linux ARM signing key below either way.
+ALARM_URL=http://os.archlinuxarm.org/os/$ALARM_TARBALL
 USERNAME=user
 
 step() { echo; echo "=== $(date -u +%H:%M:%S) $*"; }

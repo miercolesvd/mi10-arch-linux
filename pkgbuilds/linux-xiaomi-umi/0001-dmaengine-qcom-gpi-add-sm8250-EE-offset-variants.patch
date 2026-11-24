@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: colorgarden <colorgarden@outlook.com>
+Date: Mon, 16 Nov 2026 22:06:45 +0000
+Subject: [PATCH 1/5] dmaengine: qcom: gpi: add sm8250 EE offset variants
+
+Imported from github.com/colorgarden/umi-mainline @ e38cb76 for the Nura port. Not upstreamable in this form.
+---
+ drivers/dma/qcom/gpi.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/dma/qcom/gpi.c b/drivers/dma/qcom/gpi.c
+index b0ed6260e..e048b144b 100644
+--- a/drivers/dma/qcom/gpi.c
++++ b/drivers/dma/qcom/gpi.c
+@@ -2290,6 +2290,8 @@ static const struct of_device_id gpi_of_match[] = {
+ 	{ .compatible = "qcom,sc7280-gpi-dma", .data = (void *)0x10000 },
+ 	{ .compatible = "qcom,sm8150-gpi-dma", .data = (void *)0x0 },
+ 	{ .compatible = "qcom,sm8250-gpi-dma", .data = (void *)0x0 },
++	{ .compatible = "qcom,sm8250-gpi-dma-0", .data = (void *)0x1000 },
++	{ .compatible = "qcom,sm8250-gpi-dma-1", .data = (void *)0x6000 },
+ 	{ .compatible = "qcom,sm8350-gpi-dma", .data = (void *)0x10000 },
+ 	{ .compatible = "qcom,sm8450-gpi-dma", .data = (void *)0x10000 },
+ 	{ },

@@ -1,0 +1,96 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: pmaports <pmaports@localhost>
+Date: Tue, 17 Nov 2026 10:48:53 +0000
+Subject: [PATCH 11/13] arm64: dts: qcom: umi: enable PCIe RC2 for the SDX55
+ modem
+
+The Mi 10's SDX55M sits on PCIe RC2 with the same pins as the Sony
+Xperia 1 II/5 II. Enable RC2 and its PHY with Sony's supplies, and hold
+AP2MDM_STATUS high and AP2MDM_ERRFATAL low from the start, as the stock
+esoc driver does before it brings the link up.
+
+Once its SBL runs, the modem's MSI writes to the DWC iMSI-RX target reach
+the SMMU and fault instead of raising an interrupt. Stock Android sends
+them to a GIC MSI frame (SETSPI_NSR of the GICD alias at 0x17a10000, SPIs
+832-863); describe that as GICv3 MBI and make it RC2's MSI parent, so the
+doorbell is mapped in the modem's IOMMU domain.
+---
+ .../arm64/boot/dts/qcom/sm8250-xiaomi-umi.dts | 68 +++++++++++++++++++
+ 1 file changed, 68 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi.dts b/arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi.dts
+index 93795ed88..c05491a8e 100644
+--- a/arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi.dts
++++ b/arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi.dts
+@@ -702,3 +702,71 @@ dout-pins {
+ 	};
+ };
+ 
++
++/*
++ * SDX55M modem on PCIe RC2 (17cb:0306, flashless: the phone loads its
++ * firmware over MHI at every boot). Same pins as the Sony Xperia 1 II/5 II
++ * and the stock qcom,mdm0 node: MDM2AP errfatal/status on GPIO 1/3, AP2MDM
++ * status/errfatal on GPIO 56/57, PERST# 85, WAKE# 87 (from sm8250.dtsi).
++ *
++ * The stock esoc driver raises AP2MDM_STATUS before it brings the link up
++ * and keeps AP2MDM_ERRFATAL low while the phone is healthy; the hogs do the
++ * same from the start, so the link trains when RC2 probes.
++ */
++/*
++ * The modem's MSIs cannot use the DWC controller's built-in MSI receiver:
++ * after SBL starts, its MSI writes reach the SMMU and fault (SID 0x1d01,
++ * iova = the iMSI-RX target). Stock Android sends them to a GIC MSI frame
++ * instead (qcom,pci-msi at 0x17a10040: the SETSPI_NSR register of a GICD
++ * alias, SPIs 832-863) and maps that address in the modem's IOMMU domain.
++ * Mainline's GICv3 MBI support does the same, mapping included.
++ */
++&intc {
++	msi-controller;
++	mbi-ranges = <864 32>;	/* GIC INTIDs = SPI 832-863 */
++	mbi-alias = <0x0 0x17a10000>;
++};
++
++&pcie2 {
++	msi-parent = <&intc>;
++	pinctrl-0 = <&pcie2_default_state &mdm2ap_default &ap2mdm_default>;
++
++	status = "okay";
++};
++
++&pcie2_phy {
++	vdda-phy-supply = <&vreg_l5a_0p88>;
++	vdda-pll-supply = <&vreg_l9a_1p2>;
++
++	status = "okay";
++};
++
++&tlmm {
++	mdm2ap_default: mdm2ap-default-state {
++		pins = "gpio1", "gpio3";
++		function = "gpio";
++		drive-strength = <8>;
++		bias-disable;
++	};
++
++	ap2mdm_default: ap2mdm-default-state {
++		pins = "gpio56", "gpio57";
++		function = "gpio";
++		drive-strength = <16>;
++		bias-disable;
++	};
++
++	ap2mdm_status_hog: ap2mdm-status-hog {
++		gpio-hog;
++		gpios = <56 GPIO_ACTIVE_HIGH>;
++		output-high;
++		line-name = "ap2mdm-status";
++	};
++
++	ap2mdm_errfatal_hog: ap2mdm-errfatal-hog {
++		gpio-hog;
++		gpios = <57 GPIO_ACTIVE_HIGH>;
++		output-low;
++		line-name = "ap2mdm-errfatal";
++	};
++};

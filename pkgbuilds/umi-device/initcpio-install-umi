@@ -1,0 +1,39 @@
+#!/bin/bash
+# mkinitcpio hook for the Xiaomi Mi 10 (umi)
+
+build() {
+    # The GPU driver (msm) and the QCA6390 Bluetooth driver are built into
+    # the kernel and probe before the root filesystem is mounted, so their
+    # firmware has to be in the initramfs. Take whichever compression the
+    # installed firmware packages use.
+    local fw found f
+    for fw in \
+        updates/qcom/a650_gmu.bin \
+        updates/qcom/a650_sqe.fw \
+        updates/qcom/a650_zap.mdt \
+        updates/qcom/a650_zap.b00 \
+        updates/qcom/a650_zap.b01 \
+        updates/qcom/a650_zap.b02 \
+        qca/htbtfw20.tlv \
+        qca/htnv20.bin
+    do
+        found=0
+        for f in /usr/lib/firmware/"$fw" /usr/lib/firmware/"$fw".zst /usr/lib/firmware/"$fw".xz; do
+            if [[ -e "$f" ]]; then
+                add_file "$f"
+                found=1
+            fi
+        done
+        (( found )) || warning "umi: firmware '$fw' not found"
+    done
+
+    add_runscript
+}
+
+help() {
+    cat <<HELPEOF
+Xiaomi Mi 10: adds the GPU and Bluetooth firmware the built-in drivers load
+before the root filesystem is mounted, and makes the panel visible early in
+boot (re-sends its on-sequence and raises the brightness to 1500 of 2047).
+HELPEOF
+}

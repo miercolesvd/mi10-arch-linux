@@ -1,0 +1,7 @@
+# The panel comes up at brightness 1 of 2047, which is black on this AMOLED.
+# Give the booted system a visible default until the desktop restores its own.
+ACTION=="add", SUBSYSTEM=="backlight", KERNEL=="umi-panel", ATTR{brightness}="1500"
+
+# The USB controller is dual role: its gadget side (the USB network link to a
+# PC) goes away while a hub or dock is plugged in. Re-attach it when it is back.
+ACTION=="add", SUBSYSTEM=="udc", RUN+="/usr/lib/umi/usb-gadget"

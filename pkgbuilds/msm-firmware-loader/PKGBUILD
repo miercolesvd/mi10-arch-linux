@@ -1,0 +1,32 @@
+# Mounts the phone's own firmware partitions (modem, persist, ...) read-only
+# at boot and adds them to the kernel's firmware search path. The Mi 10 gets
+# its ADSP (audio) and modem firmware this way; nothing is redistributed.
+# Same script and services as postmarketOS/Nura's package.
+
+pkgname=msm-firmware-loader
+pkgver=1.9.0
+pkgrel=1
+pkgdesc="Load firmware from the firmware partitions of Qualcomm devices"
+arch=(any)
+url="https://gitlab.nura.eco/postmarketOS/msm-firmware-loader"
+license=(MIT)
+depends=(sh coreutils findutils grep sed util-linux)
+source=(
+  "$pkgname-$pkgver.tar.gz::https://gitlab.nura.eco/postmarketOS/msm-firmware-loader/-/archive/$pkgver/$pkgname-$pkgver.tar.gz"
+  10-mountpoint.conf
+)
+sha256sums=(
+  'af66adb4f1bb6c1d4d7a7a5e96ccd9e8561dc897803aed58166492f0fd857e56'
+  '89dce8f7675f42be6928cfb47c44edbfe05450c64834118f55d8d60625fa3d96'
+)
+
+package() {
+  cd "$pkgname-$pkgver"
+  # The units call /usr/sbin/..., which is /usr/bin on Arch
+  install -Dm755 -t "$pkgdir/usr/bin" msm-firmware-loader.sh msm-firmware-loader-unpack.sh
+  install -Dm644 -t "$pkgdir/usr/lib/systemd/system" \
+    msm-firmware-loader.service msm-firmware-loader-unpack.service
+  install -Dm644 "$srcdir/10-mountpoint.conf" \
+    "$pkgdir/usr/lib/systemd/system/msm-firmware-loader.service.d/10-mountpoint.conf"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

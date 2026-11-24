@@ -1,0 +1,26 @@
+# libqrtr, needed to build the modem's TFTP server in umi-modem.
+# Not in the Arch or Arch Linux ARM repositories; this follows the AUR recipe.
+# The kernel has its own QRTR name service, so qrtr-ns stays disabled.
+
+pkgname=qrtr
+pkgver=1.2
+pkgrel=1
+pkgdesc="Userspace library and tools for QRTR (Qualcomm IPC Router)"
+arch=(aarch64)
+url="https://github.com/linux-msm/qrtr"
+license=(BSD-3-Clause)
+makedepends=(meson)
+source=("$pkgname-$pkgver.tar.gz::https://github.com/linux-msm/qrtr/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=(
+  '7a82bf80246fe71287b13c66c0466208822e8337fcd4aaf302eee6c5fcb48a52'
+)
+
+build() {
+  arch-meson "$pkgname-$pkgver" build
+  meson compile -C build
+}
+
+package() {
+  meson install -C build --destdir "$pkgdir"
+  install -Dm644 "$pkgname-$pkgver/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

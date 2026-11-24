@@ -1,0 +1,12 @@
+[Unit]
+Description=Xiaomi Mi 10 USB network link to a PC (172.16.42.1)
+After=systemd-modules-load.service sys-kernel-config.mount
+Before=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/umi/usb-gadget
+
+[Install]
+WantedBy=multi-user.target

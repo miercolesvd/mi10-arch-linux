@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+"""Build the Xiaomi Mi 10 boot image and write it to the boot partition.
+
+The phone's bootloader starts an Android boot image (header v2) from the
+"boot" partition: gzip kernel + initramfs + device tree + kernel command
+line. This script builds one from the installed linux-xiaomi-umi kernel:
+
+  1. mkinitcpio builds /boot/initramfs-xiaomi-umi.img
+  2. the boot image is packed to /boot/boot.img (the old one is kept as
+     /boot/boot.img.old)
+  3. on the phone itself, the image is written to the boot partition and
+     read back to check it
+
+The kernel command line comes from /etc/kernel/cmdline. pacman runs this
+after kernel, firmware or initramfs changes (95-umi-update-boot.hook).
+
+Usage: umi-update-boot [--no-flash]
+  --no-flash   only build /boot/boot.img (also: UMI_NO_FLASH=1)
+"""
+
+import glob
+import hashlib
+import os
+import struct
+import subprocess
+import sys
+
+DTB = "dtbs/qcom/sm8250-xiaomi-umi.dtb"
+BOOT_DIR = "/boot"
+INITRAMFS = BOOT_DIR + "/initramfs-xiaomi-umi.img"
+BOOTIMG = BOOT_DIR + "/boot.img"
+CMDLINE_FILE = "/etc/kernel/cmdline"
+DEFAULT_CMDLINE = (
+    "console=tty0 clk_ignore_unused pd_ignore_unused regulator_ignore_unused "
+    "arm-smmu.disable_bypass=0 root=PARTLABEL=userdata rw rootwait"
+)
+BOOT_PART = "/dev/disk/by-partlabel/boot"
+
+# Layout the bootloader expects (deviceinfo of the Nura port)
+PAGE_SIZE = 4096
+BASE = 0x00000000
+KERNEL_OFFSET = 0x00008000
+RAMDISK_OFFSET = 0x01000000
+SECOND_OFFSET = 0x00000000
+TAGS_OFFSET = 0x00000100
+DTB_OFFSET = 0x01F00000
+
+BOOT_ARGS_SIZE = 512
+BOOT_EXTRA_ARGS_SIZE = 1024
+HEADER_V2_SIZE = 1660
+
+
+def log(msg):
+    print(f"umi-update-boot: {msg}", flush=True)
+
+
+def die(msg):
+    log(f"error: {msg}")
+    sys.exit(1)
+
+
+def find_kernel():
+    """Return (release, modules dir) of the newest installed umi kernel."""
+    dirs = [os.path.dirname(p) for p in glob.glob("/usr/lib/modules/*/Image.gz")]
+    dirs = [d for d in dirs if os.path.isfile(os.path.join(d, DTB))]
+    if not dirs:
+        die("no kernel with Image.gz and the Mi 10 device tree in /usr/lib/modules")
+    newest = max(dirs, key=lambda d: os.path.getmtime(os.path.join(d, "Image.gz")))
+    return os.path.basename(newest), newest
+
+
+def read_cmdline():
+    try:
+        with open(CMDLINE_FILE) as f:
+            words = f.read().split()
+    except FileNotFoundError:
+        log(f"{CMDLINE_FILE} not found, using the default command line")
+        return DEFAULT_CMDLINE
+    if not words:
+        die(f"{CMDLINE_FILE} is empty")
+    return " ".join(words)
+
+
+def pad(data):
+    return data + b"\0" * (-len(data) % PAGE_SIZE)
+
+
+def pack_bootimg(kernel, ramdisk, dtb, cmdline):
+    """Android boot image header v2, same bytes as AOSP mkbootimg."""
+    cmd = cmdline.encode()
+    if len(cmd) > BOOT_ARGS_SIZE - 1 + BOOT_EXTRA_ARGS_SIZE - 1:
+        die("kernel command line is too long")
+
+    sha = hashlib.sha1()
+    for part in (kernel, ramdisk, b"", b"", dtb):  # kernel ramdisk second recovery_dtbo dtb
+        if part:
+            sha.update(part)
+        sha.update(struct.pack("<I", len(part)))
+    digest = sha.digest().ljust(32, b"\0")
+
+    header = struct.pack(
+        "<8s10I16s512s32s1024sIQIIQ",
+        b"ANDROID!",
+        len(kernel), BASE + KERNEL_OFFSET,
+        len(ramdisk), BASE + RAMDISK_OFFSET,
+        0, BASE + SECOND_OFFSET,
+        BASE + TAGS_OFFSET,
+        PAGE_SIZE,
+        2,  # header version
+        0,  # os version
+        b"",  # name
+        cmd[:BOOT_ARGS_SIZE - 1],
+        digest,
+        cmd[BOOT_ARGS_SIZE - 1:],
+        0, 0,  # recovery dtbo size, offset
+        HEADER_V2_SIZE,
+        len(dtb), BASE + DTB_OFFSET,
+    )
+    assert len(header) == HEADER_V2_SIZE
+    return pad(header) + pad(kernel) + pad(ramdisk) + pad(dtb)
+
+
+def on_the_phone():
+    """True when running on the Mi 10 (not in a chroot on a build machine)."""
+    try:
+        with open("/proc/device-tree/compatible", "rb") as f:
+            compat = f.read()
+    except OSError:
+        return False
+    # The stock bootloader replaces the root compatible with qcom,kona-mtp
+    return b"xiaomi,umi" in compat or b"qcom,kona" in compat
+
+
+def partition_size(dev):
+    name = os.path.basename(os.path.realpath(dev))
+    with open(f"/sys/class/block/{name}/size") as f:
+        return int(f.read()) * 512
+
+
+def flash(image):
+    dev = os.path.realpath(BOOT_PART)
+    size = partition_size(dev)
+    if len(image) > size:
+        die(f"boot image ({len(image)} bytes) is larger than {dev} ({size} bytes)")
+    log(f"writing {len(image) // 1024} KiB to {dev} ({BOOT_PART})")
+    with open(dev, "r+b", buffering=0) as f:
+        f.write(image)
+        os.fsync(f.fileno())
+    with open(dev, "rb") as f:
+        written = f.read(len(image))
+    if hashlib.sha256(written).digest() != hashlib.sha256(image).digest():
+        die(f"read-back of {dev} does not match; /boot/boot.img.old has the previous image")
+    log("boot partition updated and verified")
+
+
+def main():
+    no_flash = "--no-flash" in sys.argv[1:] or os.environ.get("UMI_NO_FLASH") == "1"
+    if any(a not in ("--no-flash",) for a in sys.argv[1:]):
+        print(__doc__)
+        sys.exit(2)
+
+    kver, moddir = find_kernel()
+    log(f"kernel {kver}")
+
+    log("updating module dependencies (depmod)")
+    if subprocess.run(["depmod", "-a", kver]).returncode != 0:
+        die("depmod failed; the boot partition was not touched")
+
+    log(f"building {INITRAMFS} with mkinitcpio")
+    r = subprocess.run(["mkinitcpio", "-k", kver, "-g", INITRAMFS])
+    if r.returncode != 0:
+        die(f"mkinitcpio failed (exit {r.returncode}); the boot partition was not touched")
+
+    with open(os.path.join(moddir, "Image.gz"), "rb") as f:
+        kernel = f.read()
+    with open(INITRAMFS, "rb") as f:
+        ramdisk = f.read()
+    with open(os.path.join(moddir, DTB), "rb") as f:
+        dtb = f.read()
+    cmdline = read_cmdline()
+    log(f"command line: {cmdline}")
+
+    image = pack_bootimg(kernel, ramdisk, dtb, cmdline)
+    log(
+        f"boot image: kernel {len(kernel) // 1024} KiB, initramfs {len(ramdisk) // 1024} KiB, "
+        f"dtb {len(dtb) // 1024} KiB, total {len(image) // 1024} KiB"
+    )
+    if os.path.exists(BOOTIMG):
+        os.replace(BOOTIMG, BOOTIMG + ".old")
+    with open(BOOTIMG, "wb") as f:
+        f.write(image)
+    log(f"wrote {BOOTIMG}")
+
+    if no_flash:
+        log("not writing the boot partition (--no-flash)")
+    elif not on_the_phone():
+        log("not running on the Mi 10: boot partition left alone")
+    elif not os.path.exists(BOOT_PART):
+        die(f"{BOOT_PART} not found")
+    else:
+        flash(image)
+
+
+if __name__ == "__main__":
+    main()

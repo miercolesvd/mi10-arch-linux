@@ -1,0 +1,18 @@
+# USB network link to a PC (see /usr/lib/umi/usb-gadget). The phone is
+# 172.16.42.1; NetworkManager's shared mode gives the PC an address by DHCP.
+[connection]
+id=USB link to PC
+uuid=6b1c3a52-7d0e-4c7a-9f0b-2d5a1e8c4f31
+type=ethernet
+interface-name=usb0
+autoconnect=true
+autoconnect-priority=100
+
+[ethernet]
+
+[ipv4]
+method=shared
+address1=172.16.42.1/24
+
+[ipv6]
+method=ignore

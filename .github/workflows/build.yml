@@ -1,0 +1,87 @@
+name: Build image
+
+# Builds Arch Linux ARM + KDE Plasma for the Xiaomi Mi 10 on a native arm64
+# runner (build/build-image.sh) and publishes boot.img and mi10-arch.img as a
+# GitHub release ("build-<run number>"). See the README for flashing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Machine to build on; empty = the RUNNER repository variable, else GitHub's ubuntu-24.04-arm"
+        default: ""
+  push:
+    branches: [main]
+    paths:
+      - "pkgbuilds/**"
+      - "build/**"
+      - ".github/workflows/build.yml"
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write  # to publish the release
+
+jobs:
+  build:
+    # Set the RUNNER repository variable (Settings > Secrets and variables >
+    # Actions > Variables) to build on a faster provider, e.g.
+    #   ubicloud-standard-30-arm   (Ubicloud, 30-core ARM)
+    runs-on: ${{ inputs.runner || vars.RUNNER || 'ubuntu-24.04-arm' }}
+    # Paid providers get a hard limit so a hung build can't run up a bill
+    timeout-minutes: ${{ startsWith(inputs.runner || vars.RUNNER || 'ubuntu', 'ubuntu') && 300 || 60 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq arch-install-scripts libarchive-tools \
+            android-sdk-libsparse-utils e2fsprogs gpgv rsync zstd
+          nproc; free -g | sed -n 2p; df -h / | tail -1
+
+      # The kernel takes about an hour on a 4-core runner. Keep the built
+      # package until anything under pkgbuilds/linux-xiaomi-umi changes.
+      - name: Restore the kernel package
+        uses: actions/cache@v4
+        with:
+          path: kernel-pkg
+          key: kernel-${{ hashFiles('pkgbuilds/linux-xiaomi-umi/**') }}
+
+      - name: Build the image
+        env:
+          PASSWORD: ${{ secrets.UMI_PASSWORD || '147147' }}
+        run: |
+          sudo --preserve-env=PASSWORD \
+            KERNEL_PKG_DIR="$PWD/kernel-pkg" \
+            build/build-image.sh "$PWD/out"
+
+      - name: Compress the system image
+        run: |
+          cd out
+          # Release files must be under 2 GiB each
+          zstd -T0 -10 --rm mi10-arch.img
+          split -b 1900M -d -a 1 mi10-arch.img.zst mi10-arch.img.zst.part
+          rm mi10-arch.img.zst
+          ls -la
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="build-${{ github.run_number }}"
+          cat > notes.md <<EOF
+          Built from ${{ github.sha }} by run ${{ github.run_id }}.
+
+          Download every file, then on the PC:
+
+              cat mi10-arch.img.zst.part* | zstd -d -o mi10-arch.img
+              sha256sum -c SHA256SUMS
+
+          Flashing steps are in the README. Installed packages: packages.txt.
+          EOF
+          gh release create "$tag" --target "${{ github.sha }}" \
+            --title "Mi 10 Arch Linux ARM (KDE Plasma) $tag" --notes-file notes.md \
+            out/boot.img out/mi10-arch.img.zst.part* out/SHA256SUMS out/packages.txt

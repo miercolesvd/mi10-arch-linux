@@ -1,0 +1,39 @@
+# Adreno 650 firmware for the Xiaomi Mi 10. The zap shader is signed for this
+# phone, so the generic one in linux-firmware-qcom does not load on it.
+# Files from firmware/qcom/ of colorgarden/umi-mainline (as in the Nura port).
+#
+# Installed under firmware/updates/, which the kernel searches before the rest
+# of /usr/lib/firmware, so nothing clashes with linux-firmware.
+# umi-device puts these files into the initramfs: the GPU driver is built in
+# and loads them before the root filesystem is mounted.
+
+pkgname=umi-firmware
+pkgver=20261115
+pkgrel=1
+pkgdesc="Xiaomi Mi 10 Adreno 650 firmware (device-signed zap shader)"
+arch=(aarch64)
+url="https://github.com/colorgarden/umi-mainline"
+license=(LicenseRef-proprietary)
+options=(!strip !debug)
+source=(
+  a650_gmu.bin
+  a650_sqe.fw
+  a650_zap.b00
+  a650_zap.b01
+  a650_zap.b02
+  a650_zap.mbn
+  a650_zap.mdt
+)
+sha256sums=(
+  'df79fa8482fcc7587bb239b9c9e2b24bce4729893b990fe3f82b30da8175b01c'
+  'c863ceac3a823af215205d7803776bfdc68098c2c2a5d2fd05b4aa77cd336b4b'
+  'ec9b9d5a67456384809624b14a00d15d36297e5f2e75728504cd872bc95e0947'
+  '683231348adedca3a0d34e8d3633d703a5e6b8ee1e7bf304b8afca8484434864'
+  'a415e5452fa8f597670a6e51010e97bfabca7d20fbce8044caed64d9d5873113'
+  'db3f838437381b9879e49d1f6963c7b11578754c7fc6ee1eb4dbb9f1d8f97612'
+  '7be02b9a2b933cea4623c4392b219ac0be1cf089c46abe79dc72bca3db9091ce'
+)
+
+package() {
+  install -Dm644 -t "$pkgdir/usr/lib/firmware/updates/qcom" "${source[@]}"
+}

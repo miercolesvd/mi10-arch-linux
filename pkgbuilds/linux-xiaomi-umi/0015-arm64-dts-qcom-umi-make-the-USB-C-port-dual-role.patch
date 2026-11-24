@@ -1,0 +1,111 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: mi10-arch <mi10-arch@localhost>
+Date: Tue, 24 Nov 2026 19:49:38 +0000
+Subject: [PATCH] arm64: dts: qcom: umi: make the USB-C port dual role
+
+The port was fixed to peripheral mode, so hubs, docks and keyboards
+were never enumerated. Use the same setup as xiaomi-elish, which also
+wires only USB 2.0 to the connector: dwc3 in OTG mode with a role
+switch, linked to the PM8150B Type-C connector through the HS
+endpoint, and a dual-role connector that prefers sink.
+
+Chargers and PCs still see a sink in the device role. Unpowered hubs
+get 5 V (1.5 A advertised) and a host; powered docks charge the phone
+and take the device role through a PD data role swap.
+---
+ .../dts/qcom/sm8250-xiaomi-umi-common.dtsi    | 60 +++++++++++++------
+ 1 file changed, 41 insertions(+), 19 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi-common.dtsi b/arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi-common.dtsi
+index 7342f9a99..bd7fee390 100644
+--- a/arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi-common.dtsi
++++ b/arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi-common.dtsi
+@@ -587,9 +587,11 @@ &ufs_mem_phy {
+ };
+ 
+ /* ---------------------------------------------------------------- USB (2.0 only)
+- * 第一阶段固定 peripheral：插上 PC 就是一个 USB gadget，
+- * 不依赖 typec role-switch（role-switch 没有 connector 对接会 probe 延迟到死）。
+- * 注意：旧 DTS 里的 `usb-role-switch` + 空 connector 就是这个坑。
++ * Dual role: device (gadget) when plugged into a PC, host when a hub, dock
++ * or keyboard is plugged in. The PM8150B Type-C port below decides the role
++ * and switches the controller through the HS endpoint graph; a role switch
++ * without that link is what made the controller defer its probe forever.
++ * The board only wires USB 2.0 to the connector, as on xiaomi-elish.
+  */
+ &usb_1 {
+ 	qcom,select-utmi-as-pipe-clk;
+@@ -597,10 +599,15 @@ &usb_1 {
+ };
+ 
+ &usb_1_dwc3 {
+-	dr_mode = "peripheral";
++	dr_mode = "otg";
+ 	maximum-speed = "high-speed";
+ 	phys = <&usb_1_hsphy>;
+ 	phy-names = "usb2-phy";
++	usb-role-switch;
++};
++
++&usb_1_dwc3_hs_out {
++	remote-endpoint = <&pm8150b_hs_in>;
+ };
+ 
+ &usb_1_hsphy {
+@@ -739,26 +746,41 @@ connector {
+ 		label = "USB-C";
+ 		op-sink-microwatt = <10000000>;
+ 		/*
+-		 * 现在只做 sink（充电 + PD 协商）：我们的 dwc3 是 peripheral-only，
+-		 * 没有 role switch 可切；dual-role / DP altmode 需要先接上
+-		 * usb_1_qmpphy 和 fsa4480，等那条线做完再打开。
++		 * Dual role, preferring sink: chargers and PCs see a sink/device
++		 * as before (a sink attach gives the device role for a dual-role
++		 * port), unpowered hubs and keyboards get 5 V from the phone and
++		 * see a host, and powered docks charge the phone and take the
++		 * device role through a PD data role swap.
+ 		 */
+-		power-role = "sink";
+-		/*
+-		 * 必须显式写 data-role = "device"。
+-		 * TCPM 在 sink attach 时用 tcpm_data_role_for_sink()：
+-		 *   typec_caps.data == TYPEC_PORT_DFP ? TYPEC_HOST : TYPEC_DEVICE
+-		 * connector 没声明 data-role 时 caps.data 退化成 DFP，
+-		 * data_role 就被报成 host —— 于是 PD 一直不协商、只能拿到 SDP 5V/500mA，
+-		 * 插 PD 充电器还会 cc/vbus 反复 attach-detach（表现为充电断连循环）。
+-		 * 我们的 dwc3 是 peripheral-only（dr_mode = "peripheral"），本来就该是 device。
+-		 */
+-		data-role = "device";
++		power-role = "dual";
++		try-power-role = "sink";
++		data-role = "dual";
+ 		self-powered;
+ 		vbus-supply = <&pm8150b_vbus>;
+ 
+-		sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)
++		source-pdos = <PDO_FIXED(5000, 1500,
++					 PDO_FIXED_DUAL_ROLE |
++					 PDO_FIXED_USB_COMM |
++					 PDO_FIXED_DATA_SWAP)>;
++
++		sink-pdos = <PDO_FIXED(5000, 3000,
++				       PDO_FIXED_DUAL_ROLE |
++				       PDO_FIXED_USB_COMM |
++				       PDO_FIXED_DATA_SWAP)
+ 			     PDO_VAR(5000, 12000, 5000)>;
++
++		ports {
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			port@0 {
++				reg = <0>;
++
++				pm8150b_hs_in: endpoint {
++					remote-endpoint = <&usb_1_dwc3_hs_out>;
++				};
++			};
++		};
+ 	};
+ };
+ 

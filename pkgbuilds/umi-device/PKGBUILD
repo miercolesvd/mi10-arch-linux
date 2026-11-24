@@ -1,0 +1,90 @@
+# Xiaomi Mi 10 (umi) device support for Arch Linux ARM: boot image updates,
+# initramfs settings, panel and sound fixes, and the USB network link to a PC.
+# The hardware fixes are the ones of the Nura port (device-xiaomi-umi).
+
+pkgname=umi-device
+pkgver=1
+pkgrel=1
+pkgdesc="Xiaomi Mi 10 (umi) device support: boot image, initramfs, panel, sound, USB link"
+arch=(aarch64)
+url="https://github.com/miercolesvd/mi10-arch-linux"
+license=(MIT)
+depends=(
+  alsa-ucm-conf
+  dnsmasq
+  linux-firmware
+  linux-xiaomi-umi
+  mkinitcpio
+  msm-firmware-loader
+  networkmanager
+  nftables
+  python
+  umi-firmware
+)
+backup=(
+  etc/kernel/cmdline
+  etc/mkinitcpio.conf.d/umi.conf
+  etc/NetworkManager/system-connections/umi-usb.nmconnection
+  etc/ssh/sshd_config.d/50-umi-usb.conf
+)
+source=(
+  umi-update-boot
+  95-umi-update-boot.hook
+  cmdline
+  mkinitcpio-umi.conf
+  initcpio-install-umi
+  initcpio-hook-umi
+  90-umi.rules
+  modules-load-umi.conf
+  ucm-card.conf
+  ucm-HiFi.conf
+  usb-gadget
+  umi-usb-gadget.service
+  umi-usb.nmconnection
+  sshd-umi-usb.conf
+  sysctl-umi-usb.conf
+)
+sha256sums=(
+  'a3212579216b2b7677ce80ed1c0b984e5117f98256371ec1ae9535306d68f071'
+  '4d768b059fe96028b7986a76a0bcec332d33708154bca18863f445687e99b8d4'
+  '30d2342ccc86eb11eb16f429a87ef91e818c42a49161b127c0bec58888c78746'
+  '32ec1a63e1eef006abc5680aa86cf818904f1b21c8e071bdb130a3efb4986e77'
+  '01676bfa3465f7deaf37feab1f41abe502c0672a292491de0b965e12d05d0e7a'
+  'ca22ba69051256c8608007196250c9fd562678cbde1d082c4317bc1d1b198ef6'
+  'add28860f338dd2b58746a665756ff345d90fa276c6912cf02ccc50ecd5bb78f'
+  '3afae5c641a8ce96a57b92cf4e670438f1b1b80d5401ca290677b0cdc8843e48'
+  'f29d5ade496409f6129066eea5ab67faeb84b37d06d69d85d0b9ad9d966136d8'
+  '08aa5928a5ed740f19f3451888a16657b1bccfe89c91050e6fe2401f600b3d2c'
+  'ad6a1ee4f29b53575a8939ca8f98023f18b6cdccf1f6d00b907c60d165fb8c3f'
+  'e87b465c9e18700288b820d28ef1bbf71cf042e8d69033cfc7b456ded37ff6b5'
+  'dd6e6739ba237fd1d35600c9ed71ffe2631032f19fef35df16df2d38723fad37'
+  'ad0edb8152575e6346a3e6fd9dc6abe82af4fb1694710c9ac32b4dff57860269'
+  '226c78c91e97743497d264baeaa58789211fdcfc3ec58664c4461d3d51515583'
+)
+
+package() {
+  # Boot image: built from kernel + initramfs + DTB, written to "boot"
+  install -Dm755 umi-update-boot "$pkgdir/usr/bin/umi-update-boot"
+  install -Dm644 95-umi-update-boot.hook "$pkgdir/usr/share/libalpm/hooks/95-umi-update-boot.hook"
+  install -Dm644 cmdline "$pkgdir/etc/kernel/cmdline"
+
+  # Initramfs
+  install -Dm644 mkinitcpio-umi.conf "$pkgdir/etc/mkinitcpio.conf.d/umi.conf"
+  install -Dm644 initcpio-install-umi "$pkgdir/usr/lib/initcpio/install/umi"
+  install -Dm644 initcpio-hook-umi "$pkgdir/usr/lib/initcpio/hooks/umi"
+
+  # Panel brightness, gadget re-attach, sound modules
+  install -Dm644 90-umi.rules "$pkgdir/usr/lib/udev/rules.d/90-umi.rules"
+  install -Dm644 modules-load-umi.conf "$pkgdir/usr/lib/modules-load.d/umi.conf"
+
+  # ALSA UCM: the card is driver "sm8250", long name "Xiaomi Mi 10"
+  install -Dm644 ucm-card.conf "$pkgdir/usr/share/alsa/ucm2/conf.d/sm8250/Xiaomi Mi 10.conf"
+  install -Dm644 ucm-HiFi.conf "$pkgdir/usr/share/alsa/ucm2/Xiaomi/umi/HiFi.conf"
+
+  # USB network link to a PC, SSH only there
+  install -Dm755 usb-gadget "$pkgdir/usr/lib/umi/usb-gadget"
+  install -Dm644 umi-usb-gadget.service "$pkgdir/usr/lib/systemd/system/umi-usb-gadget.service"
+  install -Dm600 umi-usb.nmconnection "$pkgdir/etc/NetworkManager/system-connections/umi-usb.nmconnection"
+  install -Dm644 sshd-umi-usb.conf "$pkgdir/etc/ssh/sshd_config.d/50-umi-usb.conf"
+  install -Dm644 sysctl-umi-usb.conf "$pkgdir/usr/lib/sysctl.d/50-umi-usb.conf"
+}

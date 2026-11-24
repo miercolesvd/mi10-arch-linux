@@ -1,0 +1,1 @@
+console=tty0 clk_ignore_unused pd_ignore_unused regulator_ignore_unused arm-smmu.disable_bypass=0 root=PARTLABEL=userdata rw rootwait

@@ -1,0 +1,106 @@
+# Close-to-mainline 6.12 LTS kernel for the Xiaomi Mi 10 (umi).
+#
+# Patches 0001-0014 and the config are the ones of the Nura port
+# (miercolesvd/mi10-port, pmaports/device/testing/linux-xiaomi-umi), which in
+# turn come from the colorgarden/umi-mainline bring-up. 0015 makes the USB-C
+# port dual role so hubs, docks and keyboards work.
+#
+# The package installs the gzip kernel, the device tree and the modules under
+# /usr/lib/modules/<release>/. umi-device turns them into the Android boot
+# image and writes it to the boot partition (umi-update-boot).
+
+pkgname=linux-xiaomi-umi
+_kver=6.12.94
+pkgver=$_kver
+pkgrel=1
+pkgdesc="Close-to-mainline LTS kernel for the Xiaomi Mi 10 (umi)"
+arch=(aarch64)
+url="https://github.com/miercolesvd/mi10-arch-linux"
+license=(GPL-2.0-only)
+depends=(kmod)
+makedepends=(bc bison clang cpio flex libelf lld llvm openssl pahole perl python tar xz zstd)
+options=(!strip !debug !lto)
+_srcname=linux-$_kver
+source=(
+  "https://cdn.kernel.org/pub/linux/kernel/v${_kver%%.*}.x/$_srcname.tar.xz"
+  config
+  0001-dmaengine-qcom-gpi-add-sm8250-EE-offset-variants.patch
+  0002-drm-panel-add-Xiaomi-Mi-10-umi-DSC-command-mode-AMOL.patch
+  0003-Input-touchscreen-add-vendor-derived-ST-FTS-driver-f.patch
+  0004-power-supply-add-Qualcomm-PM8150B-fuel-gauge-SMB5-ch.patch
+  0005-arm64-dts-qcom-add-Xiaomi-Mi-10-umi.patch
+  0006-arm64-dts-qcom-umi-send-the-panel-s-90-Hz-on-sequenc.patch
+  0007-ASoC-cs35l41-don-t-fail-power-up-when-PUP-PDN-status.patch
+  0008-ASoC-qcom-sm8250-set-up-both-CS35L41-amps-on-Xiaomi-.patch
+  0009-arm64-dts-qcom-umi-load-ADSP-firmware-through-msm-fi.patch
+  0010-soc-qcom-pd-mapper-cpufreq-dt-platdev-match-SM8250-r.patch
+  0011-arm64-dts-qcom-umi-enable-PCIe-RC2-for-the-SDX55-mod.patch
+  0012-bus-mhi-host-serve-a-flashless-SDX55M-s-Sahara-and-E.patch
+  0013-bus-mhi-host-pci_generic-max_msi_vectors-parameter.patch
+  0014-regulator-add-the-Xiaomi-Mi-10-SDX55M-power-on-seque.patch
+  0015-arm64-dts-qcom-umi-make-the-USB-C-port-dual-role.patch
+)
+sha256sums=(
+  'e998a232b9418db3301cb58468e291a4f41d6ab8306029b30d991f56251dc8d2'
+  '89f039503b8e9a74b3f0040c51ec4063f9b8dc644b1971cafd12c42fc0d9fd97'
+  '22fd4b34d1bb34c291a47da637a299b29f20b877a62bdfe94957e3df59df8962'
+  '5e1cd28a9e1cbf17a7238286c439274062c23b4083c5051a5f2d03717f9ac09d'
+  '9c790d759b5791a294a6701fb9efb29a290a60a5bb46f5240704b5a5f6bfad5a'
+  'b9787e752a489ee9488a37608b173d43a21aae2186cdf6a97db6fdc86b032687'
+  '2721f1f5db4b05f70c2f8080409447646dac59fdd8864592c6f8e9f8ea1b9ad6'
+  '1e40eaa2d2203fac9d7121d6f0089ea81bd8e05095a8410f114958d861d5b852'
+  '3c428b536031af051d2a880f08c4ae60a80b7180d5c2008f3dbdf57304209704'
+  'c04c1d46e6ee3d69204000735d9380b8e2d4058e35949e7916f2f08551f5612a'
+  '11df2951dccced6cc09d2a451aac3e3fe12b1deeb3c0cfd8305eb10cf0a02b00'
+  '599e28ae8fefe169ba88f23ae12d69a59bb7fa7ac12c2df0368e9e2a0c948c27'
+  'cdc39dff51b72e3ed4c4d52c9ddaf59b21066e2478261377a921c226d54013e7'
+  '8953abf25fb4e7c66372e4d43c2198aa717eed03bc80ea19ca924554ef8687a0'
+  '5a904420de15c013385e10a6061f51380438c7e329084b10841a85188a197473'
+  '597013bc5fdaf321c4561f9015fe7a617a2c78abe721e6dc96cd9531fad02e1e'
+  '55500c8b83f1c1a13140cfe84f4662fff25c49670040e9b13b4f4c3fb55ef7fd'
+)
+
+_make() {
+  make ARCH=arm64 LLVM=1 KBUILD_BUILD_VERSION="$pkgrel" "$@"
+}
+
+prepare() {
+  cd "$_srcname"
+
+  local p
+  for p in "$srcdir"/0*.patch; do
+    echo "==> Applying ${p##*/}"
+    patch -Np1 -i "$p"
+  done
+
+  cp "$srcdir/config" .config
+  # The config was resolved with another clang version; settle the
+  # compiler-dependent symbols without prompting.
+  _make olddefconfig
+  _make -s kernelrelease > version
+  echo "==> Kernel release: $(<version)"
+}
+
+build() {
+  cd "$_srcname"
+  unset LDFLAGS
+  _make Image.gz modules qcom/sm8250-xiaomi-umi.dtb
+}
+
+package() {
+  cd "$_srcname"
+  local kver modulesdir
+  kver=$(<version)
+  modulesdir="$pkgdir/usr/lib/modules/$kver"
+
+  echo "==> Installing modules for $kver"
+  # depmod runs from kmod's pacman hook on the target
+  _make INSTALL_MOD_PATH="$pkgdir/usr" INSTALL_MOD_STRIP=1 \
+    DEPMOD=/doesnt/exist modules_install
+  rm -f "$modulesdir"/build "$modulesdir"/source
+
+  echo "==> Installing Image.gz and the device tree"
+  install -Dm644 arch/arm64/boot/Image.gz "$modulesdir/Image.gz"
+  install -Dm644 arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi.dtb \
+    "$modulesdir/dtbs/qcom/sm8250-xiaomi-umi.dtb"
+}

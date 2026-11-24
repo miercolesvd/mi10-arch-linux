@@ -1,0 +1,54 @@
+# Packages installed on top of the Arch Linux ARM base system, one per line.
+# The Mi 10 packages from pkgbuilds/ are added separately.
+
+# System
+base-devel
+bluez
+bluez-utils
+nano
+networkmanager
+openssh
+sudo
+wireless-regdb
+
+# Sound and graphics
+alsa-utils
+mesa
+pipewire
+pipewire-alsa
+pipewire-pulse
+vulkan-freedreno
+wireplumber
+xorg-xwayland
+
+# KDE Plasma (Wayland)
+bluedevil
+breeze-gtk
+kde-gtk-config
+kinfocenter
+kscreen
+plasma-desktop
+plasma-keyboard
+plasma-nm
+plasma-pa
+plasma-systemmonitor
+powerdevil
+qt6-virtualkeyboard
+sddm
+sddm-kcm
+systemsettings
+xdg-desktop-portal-kde
+
+# Apps
+ark
+dolphin
+firefox
+gwenview
+kate
+konsole
+okular
+spectacle
+
+# Fonts
+noto-fonts
+noto-fonts-emoji

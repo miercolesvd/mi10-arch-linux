@@ -1,0 +1,21 @@
+# Rebuild the Mi 10 boot image (kernel + initramfs + device tree) and write
+# it to the boot partition whenever something that goes into it changes.
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Target = linux-xiaomi-umi
+Target = umi-device
+Target = umi-firmware
+Target = mkinitcpio
+Target = mkinitcpio-busybox
+Target = linux-firmware*
+Target = systemd
+Target = kmod
+
+[Action]
+Description = Updating the Mi 10 boot image...
+When = PostTransaction
+Depends = mkinitcpio
+Depends = python
+Exec = /usr/bin/umi-update-boot

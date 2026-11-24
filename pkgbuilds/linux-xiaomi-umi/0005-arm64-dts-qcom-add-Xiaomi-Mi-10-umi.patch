@@ -1,0 +1,2406 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: colorgarden <colorgarden@outlook.com>
+Date: Mon, 16 Nov 2026 22:06:47 +0000
+Subject: [PATCH 5/5] arm64: dts: qcom: add Xiaomi Mi 10 (umi)
+
+Imported from github.com/colorgarden/umi-mainline @ e38cb76 for the Nura port. Not upstreamable in this form.
+---
+ arch/arm64/boot/dts/qcom/Makefile             |   2 +
+ .../dts/qcom/sm8250-xiaomi-umi-common.dtsi    | 860 ++++++++++++++++++
+ .../dts/qcom/sm8250-xiaomi-umi-touch.dtsi     | 249 +++++
+ .../arm64/boot/dts/qcom/sm8250-xiaomi-umi.dts | 697 ++++++++++++++
+ arch/arm64/boot/dts/qcom/umi-dtbo-stubs.dtsi  | 247 +++++
+ .../boot/dts/qcom/xiaomi-umi-battery.dtsi     | 154 ++++
+ .../boot/dts/qcom/xiaomi-umi-panels.dtsi      | 131 +++
+ 7 files changed, 2340 insertions(+)
+ create mode 100644 arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi-common.dtsi
+ create mode 100644 arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi-touch.dtsi
+ create mode 100644 arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi.dts
+ create mode 100644 arch/arm64/boot/dts/qcom/umi-dtbo-stubs.dtsi
+ create mode 100644 arch/arm64/boot/dts/qcom/xiaomi-umi-battery.dtsi
+ create mode 100644 arch/arm64/boot/dts/qcom/xiaomi-umi-panels.dtsi
+
+diff --git a/arch/arm64/boot/dts/qcom/Makefile b/arch/arm64/boot/dts/qcom/Makefile
+index b13c169ec..baf40fef6 100644
+--- a/arch/arm64/boot/dts/qcom/Makefile
++++ b/arch/arm64/boot/dts/qcom/Makefile
+@@ -278,3 +278,5 @@ dtb-$(CONFIG_ARCH_QCOM)	+= x1e80100-lenovo-yoga-slim7x.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= x1e80100-microsoft-romulus13.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= x1e80100-microsoft-romulus15.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= x1e80100-qcp.dtb
++dtb-$(CONFIG_ARCH_QCOM)	+= sm8250-xiaomi-umi.dtb
++DTC_FLAGS_sm8250-xiaomi-umi	:= -@
+diff --git a/arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi-common.dtsi b/arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi-common.dtsi
+new file mode 100644
+index 000000000..7342f9a99
+--- /dev/null
++++ b/arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi-common.dtsi
+@@ -0,0 +1,860 @@
++// SPDX-License-Identifier: BSD-3-Clause
++/*
++ * Xiaomi Mi 10 (umi) — Qualcomm SM8250 (Snapdragon 865, "kona")
++ *
++ * 目标：主线内核 bring-up 用「最小可靠集合」。
++ * 规则：只有第一阶段（能进 console / 能挂 rootfs）真正需要的节点才 okay，
++ *       其余全部留在 sm8250.dtsi 默认的 disabled，由 sm8250-xiaomi-umi.dts 逐阶段打开。
++ *
++ * 数据来源：
++ *   - 主板编号 / msm-id      : downstream umi-sm8250-overlay.dts
++ *   - 面板/触控/UFS/供电引脚  : HARDWARE.md（从 downstream 提取）
++ *   - 参考同 SoC 设备        : sm8250-xiaomi-elish-common.dtsi (Mi Pad 5)
++ */
++
++#include <dt-bindings/arm/qcom,ids.h>
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/linux-event-codes.h>
++#include <dt-bindings/phy/phy.h>
++#include <dt-bindings/regulator/qcom,rpmh-regulator.h>
++#include <dt-bindings/usb/pd.h>
++#include "sm8250.dtsi"
++#include "pm8150.dtsi"
++#include "pm8150b.dtsi"
++#include "pm8150l.dtsi"
++#include "pm8009.dtsi"
++
++/*
++ * 上游 sm8250.dtsi 里这几个 reserved-memory 是按 MTP 参考板写的，
++ * umi 的实际地址/大小不同 → 删掉后在下面重新定义。
++ */
++/delete-node/ &adsp_mem;
++/delete-node/ &cdsp_secure_heap;
++/delete-node/ &slpi_mem;
++/delete-node/ &spss_mem;
++/delete-node/ &xbl_aop_mem;
++
++/ {
++	chassis-type = "handset";
++
++	/*
++	 * ★ 关键：bootloader 靠这两个属性决定「认不认这个 DTB」。
++	 *   msm-id   : 356 (QCOM_ID_SM8250) + 0x20001 = kona v2.1，与 downstream kona-v2.1.dtsi 一致。
++	 *   board-id : 43 (0x2b)，来自 downstream umi-sm8250-overlay.dts。
++	 *              之前写成 <8 0> 是 Mi Pad 系列的值（elish 是 0x10008），umi 不匹配，
++	 *              ABL 会丢弃追加的 DTB 甚至直接判定引导失败 → 黑屏几秒后回 fastboot。
++	 */
++	qcom,msm-id = <QCOM_ID_SM8250 0x20001>;	/* SM8250 v2.1 */
++	qcom,board-id = <43 0>;			/* umi / M2001J2C */
++
++	aliases {
++		/* qupv3_se12_2uart @ 0xa90000 → ttyMSM0 */
++		serial0 = &uart12;
++	};
++
++	chosen {
++		#address-cells = <2>;
++		#size-cells = <2>;
++		ranges;
++
++		/*
++		 * ★ 必须项：没有 stdout-path，裸参数 earlycon 找不到设备，
++		 *   内核在 tty 驱动 probe 之前完全没有输出（这也是之前"全黑"的原因之一）。
++		 *   同时 console=tty0 会把 log 打到屏幕上（见 RUNBOOK 第一阶段）。
++		 */
++		stdout-path = "serial0:115200n8";
++
++		/*
++		 * ABL 留在 0x9c000000 的 cont-splash 帧缓冲。
++		 * simpledrm 接管它 → 屏幕上直接出现内核 log。
++		 *
++		 * 注意：这块 fb 和 mdss 并不冲突。simpledrm 是 firmware fb，
++		 * fbcon 一旦挂上就不让位；而且面板节点 status 还是 disabled 时
++		 * msm 根本没有 connector，不会做 modeset。所以打开 DRM_MSM
++		 * 之后这块 framebuffer 依然是可靠的观测通道。
++		 */
++		framebuffer: framebuffer@9c000000 {
++			compatible = "simple-framebuffer";
++			/* reg 覆盖整块 cont-splash（和 elish 一致）。
++			 * simpledrm 只要求 reg 不小于 stride*height，写多点没坏处，
++			 * 反而保证这块内存不会被别的东西抢走。 */
++			reg = <0x0 0x9c000000 0x0 0x2300000>;
++			width = <1080>;
++			height = <2340>;
++			stride = <(1080 * 4)>;
++			format = "a8r8g8b8";
++		};
++	};
++
++	battery: battery {
++		compatible = "simple-battery";
++		voltage-min-design-microvolt = <3400000>;
++		voltage-max-design-microvolt = <4450000>;
++		energy-full-design-microwatt-hours = <18300000>;
++		charge-full-design-microamp-hours = <4780000>;
++	};
++
++	vph_pwr: vph-pwr-regulator {
++		compatible = "regulator-fixed";
++		regulator-name = "vph_pwr";
++		regulator-min-microvolt = <3700000>;
++		regulator-max-microvolt = <3700000>;
++	};
++
++	/* S6c 实际是 ebi.lvl，只为供电树完整性存在 */
++	vreg_s6c_0p88: smpc6-regulator {
++		compatible = "regulator-fixed";
++		regulator-name = "vreg_s6c_0p88";
++		regulator-min-microvolt = <880000>;
++		regulator-max-microvolt = <880000>;
++		regulator-always-on;
++		vin-supply = <&vph_pwr>;
++	};
++
++	/*
++	 * pm8150a（第二颗 PM8150，OLED 偏压/触控供电）主线没有 RPMH regulator 驱动。
++	 * ABL 跳转前已把它上电，这里用 fixed-regulator 告诉内核"这条轨已存在，别动"。
++	 * 配合 cmdline: pd_ignore_unused clk_ignore_unused
++	 */
++	pm8150a_l1_workaround: pm8150a-l1-regulator {
++		compatible = "regulator-fixed";
++		regulator-name = "pm8150a_l1";
++		regulator-min-microvolt = <1800000>;
++		regulator-max-microvolt = <1800000>;
++		regulator-always-on;
++		regulator-boot-on;
++	};
++
++	touch_vddio_vreg: touch-vddio-regulator {
++		compatible = "regulator-fixed";
++		regulator-name = "touch_vddio_vreg";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		enable-active-high;
++		gpio = <&tlmm 69 GPIO_ACTIVE_HIGH>;
++		regulator-boot-on;
++	};
++
++	/*
++	 * 板级 boost 电源使能：PM8150B GPIO5。
++	 *
++	 * 下游 DT（dump/downstream.dts）：
++	 *   vdd_boost_vreg { compatible = "regulator-fixed";
++	 *                    regulator-always-on; enable-active-high;
++	 *                    startup-delay-us = <4000>;
++	 *                    gpio = <&pm8150b_gpios 5 0>; }
++	 * 它没有 consumer（原厂也不给任何设备引用），就是一颗常开的板级电源。
++	 *
++	 * UniXNU 的 XNU 移植（reAAAq/UniXNU-umi commit 138d6cb）把这颗 GPIO
++	 * 从 output-low 改成拉高之后，ST FTS 触摸在 iPadOS 下才真正可用 ——
++	 * 在那之前触摸 IC 只有 1.8 V(vdd) / 3.3 V(vddio)：主机接口、ITO 自容
++	 * 测试都能过，但互容扫描（TX 需要 boost 供电）出不来数据，正好是我们
++	 * 看到的现象（MS_RAW/MS_BASELINE 恒为 -13462、FIFO 永远空、IRQ 不动）。
++	 *
++	 * 原厂 dtbo 里这颗 regulator 是用**写死的 phandle 0x32d** 引用的，主线
++	 * DTB 的 phandle 编号不同，所以 dtbo 补进来的那份拿不到 GPIO
++	 * （dmesg: vdd_boost_vreg: reg-fixed-voltage: can't get GPIO）。
++	 * 这里用 label 重新声明一份，保证开机就把它拉高。
++	 */
++	vdd_boost_reg: regulator-vdd-boost {
++		compatible = "regulator-fixed";
++		regulator-name = "vdd_boost_reg";
++		enable-active-high;
++		gpio = <&pm8150b_gpios 5 GPIO_ACTIVE_HIGH>;
++		regulator-always-on;
++		regulator-boot-on;
++		startup-delay-us = <4000>;
++	};
++
++	gpio_keys: gpio-keys {
++		compatible = "gpio-keys";
++		pinctrl-names = "default";
++		pinctrl-0 = <&vol_up_n>;
++
++		key-vol-up {
++			label = "Volume Up";
++			gpios = <&pm8150_gpios 6 GPIO_ACTIVE_LOW>;
++			linux,code = <KEY_VOLUMEUP>;
++			debounce-interval = <15>;
++			linux,can-disable;
++			wakeup-source;
++		};
++
++		/* Hall（翻盖）键在 gpio14，属于 NORTH tile —— 那块读不了，
++		 * 强行 request 会 abort，所以先去掉。等 NORTH 能访问了再加回来。 */
++	};
++
++	reserved-memory {
++		xbl_aop_mem: xbl-aop@80600000 {
++			reg = <0x0 0x80600000 0x0 0x260000>;
++			no-map;
++		};
++
++		/* XBL/LK 的 UEFI 日志区（设备 DTB 里的 res_xbl_uefi_log_region@80880000，
++		 * 80 KiB）。上游 sm8250.dtsi 没有这个节点，所以以前这块是「内核可以用」
++		 * 的状态 —— 内核随便一分配就把 XBL 的日志写坏了。虽然不影响启动，但出问题
++		 * 时那份日志本来能救命，值得留出来。不加 compatible：mainline 不认识
++		 * downstream 的 "removed-dma-pool"，只要 reg + no-map 就会保留。 */
++		res_xbl_uefi_log: xbl-uefi-log@80880000 {
++			reg = <0x0 0x80880000 0x0 0x14000>;
++			no-map;
++		};
++
++		/* 以下三块沿用 elish 的布局（同 SM8250 + 同 PMIC 方案）；
++		 * 第一阶段这些 remoteproc 全部 disabled，尺寸写错只会浪费 RAM，不会踩到内核。 */
++		slpi_mem: slpi@88c00000 {
++			reg = <0x0 0x88c00000 0x0 0x2f00000>;
++			no-map;
++		};
++
++		adsp_mem: adsp@8bb00000 {
++			reg = <0x0 0x8bb00000 0x0 0x2500000>;
++			no-map;
++		};
++
++		spss_mem: spss@8e000000 {
++			reg = <0x0 0x8e000000 0x0 0x100000>;
++			no-map;
++		};
++
++		cdsp_secure_heap: cdsp-secure-heap@8e100000 {
++			reg = <0x0 0x8e100000 0x0 0x4600000>;
++			no-map;
++		};
++
++		/* cont-splash 整块按下游 DTB 的原尺寸保留（0x2300000 = 35 MB）。
++		 * 不要缩到「刚好一屏」：ABL 的显示管线还在从这块内存扫描输出，
++		 * 缩了之后内核可能会把后面那段拿去分配别的用途 → 屏幕花掉。
++		 * elish 主线也是这么写的。 */
++		cont_splash_mem: cont-splash@9c000000 {
++			reg = <0x0 0x9c000000 0x0 0x2300000>;
++			no-map;
++		};
++
++		/* 设备 DTB 里的 dfps_data_region@9e300000，紧接在 cont-splash 后面。
++		 * 下游 mdss 用它做动态帧率切换的数据交换区；主线不开 mdss 用不到，
++		 * 但 ABL 的显示管线可能还在读，而且这块地址确实在下游的内存图里，
++		 * 留着更接近真机（不加 no-map：下游也没加，只是不让内核分配）。 */
++		dfps_data_mem: dfps-data@9e300000 {
++			reg = <0x0 0x9e300000 0x0 0x100000>;
++		};
++
++		/* 注意：这里故意不写 disp_rdump 区域。
++		 * 下游 DTB 里有 disp_rdump_region@0xb0400000 (16 MB)，但那是下游
++		 * mdss 驱动崩溃转储用的，主线用不到；把它标成 no-map 反而多一块
++		 * 「内核不能碰」的内存，万一 ABL 正好把 initramfs 放在那儿就会
++		 * 解压失败。elish 主线的 reserved-memory 里同样没有这一段。 */
++
++		/* 崩溃现场：内核 log 会留在 0xb0000000，重启后可从 /sys/fs/pstore 读回来。
++		 *
++		 * 尺寸必须让「dmesg dump 区」有空间，否则 panic 时的整段 ring buffer
++		 * 根本存不进来。ramoops 的布局是（fs/pstore/ram.c ramoops_probe）：
++		 *     dump_mem_sz = 总大小 - console_size - ftrace_size - pmsg_size
++		 *     dmesg 记录条数 = dump_mem_sz / record_size
++		 * 我们原来是 record 0x10000 + console 0x200000 + pmsg 0x200000 = 4.06 MB，
++		 * 刚好把 4 MB 占满 → dump_mem_sz = 0 → **一条 dmesg 记录都存不了**，
++		 * panic 时只有 console 区（从 late_initcall 才开始记）能留下东西。
++		 * 现在按 elish（已知能跑的 SM8250 主线移植）的写法：
++		 *     dump_mem_sz = 0x400000 - 0x200000 = 2 MB，record 4 KB → 512 条记录
++		 */
++		ramoops: ramoops@b0000000 {
++			compatible = "ramoops";
++			reg = <0x0 0xb0000000 0x0 0x400000>;
++			record-size = <0x1000>;
++			/* 1 MB：原来 2 MB 时 dump 区只剩 2 MB = 512 条 4 KB 记录，
++			 * 而 pstore.kmsg_bytes=2097152 正好要 512 条 -> 实测 writing error (-28)(ENOSPC)。
++			 * 缩到 1 MB 后 dump 区 3 MB = 768 条，2 MB 的 kmsg 放得下。 */
++			console-size = <0x100000>;
++			ecc-size = <16>;
++			no-map;
++		};
++	};
++};
++
++/* ---------------------------------------------------------------- 供电 */
++&apps_rsc {
++	regulators-0 {
++		compatible = "qcom,pm8150-rpmh-regulators";
++		qcom,pmic-id = "a";
++
++		vdd-s1-supply = <&vph_pwr>;
++		vdd-s2-supply = <&vph_pwr>;
++		vdd-s3-supply = <&vph_pwr>;
++		vdd-s4-supply = <&vph_pwr>;
++		vdd-s5-supply = <&vph_pwr>;
++		vdd-s6-supply = <&vph_pwr>;
++		vdd-s7-supply = <&vph_pwr>;
++		vdd-s8-supply = <&vph_pwr>;
++		vdd-s9-supply = <&vph_pwr>;
++		vdd-s10-supply = <&vph_pwr>;
++		vdd-l1-l8-l11-supply = <&vreg_s6c_0p88>;
++		vdd-l2-l10-supply = <&vreg_bob>;
++		vdd-l3-l4-l5-l18-supply = <&vreg_s6a_0p95>;
++		vdd-l6-l9-supply = <&vreg_s8c_1p35>;
++		vdd-l7-l12-l14-l15-supply = <&vreg_s5a_1p9>;
++		vdd-l13-l16-l17-supply = <&vreg_bob>;
++
++		/* (S1+S2+S3) - cx.lvl (ARC) */
++
++		vreg_s4a_1p8: smps4 {
++			regulator-name = "vreg_s4a_1p8";
++			regulator-min-microvolt = <1800000>;
++			regulator-max-microvolt = <1920000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++			regulator-allow-set-load;
++			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
++						   RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_s5a_1p9: smps5 {
++			regulator-name = "vreg_s5a_1p9";
++			regulator-min-microvolt = <1900000>;
++			regulator-max-microvolt = <2040000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_s6a_0p95: smps6 {
++			regulator-name = "vreg_s6a_0p95";
++			regulator-min-microvolt = <950000>;
++			regulator-max-microvolt = <1128000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_l2a_3p1: ldo2 {
++			regulator-name = "vreg_l2a_3p1";
++			regulator-min-microvolt = <3072000>;
++			regulator-max-microvolt = <3072000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_l3a_0p9: ldo3 {
++			regulator-name = "vreg_l3a_0p9";
++			regulator-min-microvolt = <928000>;
++			regulator-max-microvolt = <932000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		/* L4 - lmx.lvl (ARC) */
++
++		vreg_l5a_0p88: ldo5 {
++			regulator-name = "vreg_l5a_0p88";
++			regulator-min-microvolt = <880000>;
++			regulator-max-microvolt = <880000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_l6a_1p2: ldo6 {
++			regulator-name = "vreg_l6a_1p2";
++			regulator-min-microvolt = <1200000>;
++			regulator-max-microvolt = <1200000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++			regulator-allow-set-load;
++			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
++						   RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		/* L7 is unused. */
++
++		vreg_l9a_1p2: ldo9 {
++			regulator-name = "vreg_l9a_1p2";
++			regulator-min-microvolt = <1200000>;
++			regulator-max-microvolt = <1200000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		/* L10 is unused, L11 - lcx.lvl (ARC) */
++
++		vreg_l12a_1p8: ldo12 {
++			regulator-name = "vreg_l12a_1p8";
++			regulator-min-microvolt = <1800000>;
++			regulator-max-microvolt = <1800000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		/* L13 is unused. */
++
++		vreg_l14a_1p88: ldo14 {
++			regulator-name = "vreg_l14a_1p88";
++			regulator-min-microvolt = <1880000>;
++			regulator-max-microvolt = <1880000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		/* L15 & L16 are unused. */
++
++		vreg_l17a_3p0: ldo17 {
++			regulator-name = "vreg_l17a_3p0";
++			regulator-min-microvolt = <2496000>;
++			regulator-max-microvolt = <3008000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++			regulator-allow-set-load;
++			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
++						   RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_l18a_0p9: ldo18 {
++			regulator-name = "vreg_l18a_0p9";
++			regulator-min-microvolt = <800000>;
++			regulator-max-microvolt = <920000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++	};
++
++	/*
++	 * 未支持：OLEDB / ab / ibb（pm8150a 的 OLED 偏压，见上面 pm8150a_l1_workaround）
++	 */
++	regulators-1 {
++		compatible = "qcom,pm8150l-rpmh-regulators";
++		qcom,pmic-id = "c";
++
++		vdd-s1-supply = <&vph_pwr>;
++		vdd-s2-supply = <&vph_pwr>;
++		vdd-s3-supply = <&vph_pwr>;
++		vdd-s4-supply = <&vph_pwr>;
++		vdd-s5-supply = <&vph_pwr>;
++		vdd-s6-supply = <&vph_pwr>;
++		vdd-s7-supply = <&vph_pwr>;
++		vdd-s8-supply = <&vph_pwr>;
++		vdd-l1-l8-supply = <&vreg_s4a_1p8>;
++		vdd-l2-l3-supply = <&vreg_s8c_1p35>;
++		vdd-l4-l5-l6-supply = <&vreg_bob>;
++		vdd-l7-l11-supply = <&vreg_bob>;
++		vdd-l9-l10-supply = <&vreg_bob>;
++		vdd-bob-supply = <&vph_pwr>;
++
++		vreg_bob: bob {
++			regulator-name = "vreg_bob";
++			regulator-min-microvolt = <3350000>;
++			regulator-max-microvolt = <3960000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_AUTO>;
++		};
++
++		vreg_s7c_0p35: smps7 {
++			regulator-name = "vreg_s7c_0p35";
++			regulator-min-microvolt = <348000>;
++			regulator-max-microvolt = <1000000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_s8c_1p35: smps8 {
++			regulator-name = "vreg_s8c_1p35";
++			regulator-min-microvolt = <1350000>;
++			regulator-max-microvolt = <1400000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_l1c_1p8: ldo1 {
++			regulator-name = "vreg_l1c_1p8";
++			regulator-min-microvolt = <1800000>;
++			regulator-max-microvolt = <1800000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_l5c_1p8: ldo5 {
++			regulator-name = "vreg_l5c_1p8";
++			regulator-min-microvolt = <1800000>;
++			regulator-max-microvolt = <2800000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_l6c_2p9: ldo6 {
++			regulator-name = "vreg_l6c_2p9";
++			regulator-min-microvolt = <1800000>;
++			regulator-max-microvolt = <2960000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++			regulator-allow-set-load;
++			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
++						   RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_l7c_2p85: ldo7 {
++			regulator-name = "vreg_l7c_2p85";
++			regulator-min-microvolt = <2856000>;
++			regulator-max-microvolt = <3104000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_l8c_1p8: ldo8 {
++			regulator-name = "vreg_l8c_1p8";
++			regulator-min-microvolt = <1800000>;
++			regulator-max-microvolt = <1800000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_l9c_2p9: ldo9 {
++			regulator-name = "vreg_l9c_2p9";
++			regulator-min-microvolt = <2704000>;
++			regulator-max-microvolt = <2960000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++			regulator-allow-set-load;
++			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
++						   RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_l10c_3p3: ldo10 {
++			regulator-name = "vreg_l10c_3p3";
++			regulator-min-microvolt = <3296000>;
++			regulator-max-microvolt = <3296000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_l11c_3p0: ldo11 {
++			regulator-name = "vreg_l11c_3p0";
++			regulator-min-microvolt = <3000000>;
++			regulator-max-microvolt = <3000000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++	};
++
++	regulators-2 {
++		compatible = "qcom,pm8009-rpmh-regulators";
++		qcom,pmic-id = "f";
++
++		vdd-s1-supply = <&vph_pwr>;
++		vdd-s2-supply = <&vreg_bob>;
++		vdd-l2-supply = <&vreg_s8c_1p35>;
++		vdd-l5-l6-supply = <&vreg_bob>;
++		vdd-l7-supply = <&vreg_s4a_1p8>;
++
++		vreg_s1f_1p2: smps1 {
++			regulator-name = "vreg_s1f_1p2";
++			regulator-min-microvolt = <1200000>;
++			regulator-max-microvolt = <1200000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		/* PM8009 SMPS2 是 WiFi（QCA6390）PMU 的 digital 0.95V。
++		 * 下游 DT 里就是 cnss 的 vdd-wlan-dig = pm8009_s2 @0.95V。
++		 * 这里原来照抄 MTP 的 0.512–1.1V 范围，又没有 consumer，
++		 * 于是 regulator_summary 里一直是 `0 users / 512mV`（关着的）。
++		 *
++		 * 电压范围与 mode 照抄作者 7.2 dtb 里那颗 vreg_s2f_0p95：
++		 * min 900000 / max 952000 / initial-mode = AUTO(2)。
++		 * 不能用 min == max：regulator 注册时 core 会去读当前电压，
++		 * RPM 回 -ENOTRECOVERABLE，整个 regulators-2 连 probe 都失败。*/
++		vreg_s2f_0p5: vreg_s2f_0p95: smps2 {
++			regulator-name = "vreg_s2f_0p95";
++			regulator-min-microvolt = <900000>;
++			regulator-max-microvolt = <952000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_AUTO>;
++		};
++
++		vreg_l2f_1p3: ldo2 {
++			regulator-name = "vreg_l2f_1p3";
++			regulator-min-microvolt = <1304000>;
++			regulator-max-microvolt = <1304000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_l5f_2p8: ldo5 {
++			regulator-name = "vreg_l5f_2p85";
++			regulator-min-microvolt = <2800000>;
++			regulator-max-microvolt = <2800000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_l6f_2p8: ldo6 {
++			regulator-name = "vreg_l6f_2p8";
++			regulator-min-microvolt = <2800000>;
++			regulator-max-microvolt = <2800000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
++		vreg_l7f_1p8: ldo7 {
++			regulator-name = "vreg_l7f_1p8";
++			regulator-min-microvolt = <1800000>;
++			regulator-max-microvolt = <1800000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++	};
++};
++
++/* ---------------------------------------------------------------- 存储 */
++&ufs_mem_hc {
++	vcc-supply = <&vreg_l17a_3p0>;
++	vcc-max-microamp = <800000>;
++	vccq-supply = <&vreg_l6a_1p2>;
++	vccq-max-microamp = <800000>;
++	vccq2-supply = <&vreg_s4a_1p8>;
++	vccq2-max-microamp = <800000>;
++	status = "okay";
++};
++
++&ufs_mem_phy {
++	vdda-phy-supply = <&vreg_l5a_0p88>;
++	vdda-pll-supply = <&vreg_l9a_1p2>;
++	status = "okay";
++};
++
++/* ---------------------------------------------------------------- USB (2.0 only)
++ * 第一阶段固定 peripheral：插上 PC 就是一个 USB gadget，
++ * 不依赖 typec role-switch（role-switch 没有 connector 对接会 probe 延迟到死）。
++ * 注意：旧 DTS 里的 `usb-role-switch` + 空 connector 就是这个坑。
++ */
++&usb_1 {
++	qcom,select-utmi-as-pipe-clk;
++	status = "okay";
++};
++
++&usb_1_dwc3 {
++	dr_mode = "peripheral";
++	maximum-speed = "high-speed";
++	phys = <&usb_1_hsphy>;
++	phy-names = "usb2-phy";
++};
++
++&usb_1_hsphy {
++	vdda-pll-supply = <&vreg_l5a_0p88>;
++	vdda18-supply = <&vreg_l12a_1p8>;
++	vdda33-supply = <&vreg_l2a_3p1>;
++	status = "okay";
++};
++
++/* ---------------------------------------------------------------- 调试串口
++ * uart12 = 0xa90000 = qupv3_se12_2uart（downstream 的调试口）
++ * 没焊 UART 也没关系：console=tty0 会把同样的 log 打到屏幕上。
++ */
++&uart12 {
++	status = "okay";
++};
++
++/* ---------------------------------------------------------------- QUP / DMA */
++&gpi_dma0 {
++	status = "okay";
++};
++
++&gpi_dma1 {
++	status = "okay";
++};
++
++&gpi_dma2 {
++	status = "okay";
++};
++
++&qupv3_id_0 {
++	status = "okay";
++};
++
++&qupv3_id_1 {
++	status = "okay";
++};
++
++&qupv3_id_2 {
++	status = "okay";
++};
++
++/*
++ * 蓝牙：QCA6390 走 uart6（geniqup@9c0000 / qupv3_id_1 下的 serial@998000）。
++ *
++ * ★ 这段以前写在 sm8250-xiaomi-umi.dts 里，但真正编进镜像的是
++ *   sm8250-xiaomi-umi-wifi.dts，它只 include 了 common.dtsi —— 于是
++ *   uart6 一直是 disabled、bluetooth 节点根本不存在，BT 当然起不来。
++ *   现在放到 common.dtsi，所有变体都能用。
++ *
++ * ★★ 还必须给 uart6 一个 serial alias：qcom_geni_serial 用
++ *   of_alias_get_id(np, "serial") 取端口号，取不到就 -ENODEV
++ *   （dmesg: "qcom_geni_serial 998000.serial: Invalid line -19"）。
++ *   更麻烦的是：这个没绑上的 uart6 会让 qnoc/interconnect 的
++ *   sync_state() 一直 pending，把它当 consumer 的 **pcie0 就被拖住不 probe**
++ *   —— 表现就是“蓝牙没起来，WiFi 也没了”。
++ *
++ * 固件在 linux-firmware 里：qca/hpbtfw21.tlv（patchram）+ qca/hpnv21.bin。
++ */
++/ {
++	aliases {
++		serial1 = &uart6;
++	};
++};
++
++&uart6 {
++	status = "okay";
++
++	bluetooth {
++		compatible = "qcom,qca6390-bt";
++		/*
++		 * 这六条 supply 不是给驱动供电用的（hci_qca 对 QCA6390 的
++		 * num_vregs = 0），而是让 pwrseq-qcom-wcn 的
++		 * pwrseq_qcom_wcn_match() 认下这个 consumer：它要求 consumer 的
++		 * vddaon-supply 解析到「父节点就是 PMU」的那个 regulator。
++		 * 认下来之后 hci_qca 才会 pwrseq_power_on() -> 拉高 BT_EN(gpio21)。
++		 */
++		vddrfacmn-supply = <&vreg_pmu_rfa_cmn>;
++		vddaon-supply = <&vreg_pmu_aon_0p59>;
++		vddbtcmx-supply = <&vreg_pmu_btcmx_0p85>;
++		vddrfa0p8-supply = <&vreg_pmu_rfa_0p8>;
++		vddrfa1p2-supply = <&vreg_pmu_rfa_1p2>;
++		vddrfa1p7-supply = <&vreg_pmu_rfa_1p7>;
++		max-speed = <3200000>;
++		/*
++		 * hci_qca 会把这个名字前面再加一次 "qca/"，依次试 "<name>" 和
++		 * "<name 去掉扩展名>.bin"；另外 patchram 的名字是它按 ROM 版本自己拼的
++		 * （本机 ROM 0x200 -> qca/htbtfw20.tlv）。
++		 * 所以这里只写 NVM 的**文件名**，最终落到 qca/htnv20.bin
++		 * （写 "qca/hpbtfw21.tlv" 会变成 qca/qca/... 那种双前缀路径）。
++		 */
++		firmware-name = "htnv20.bin";
++
++		/*
++		 * ★★ 必须给 BD_ADDR，否则蓝牙永远「未配置」。
++		 *
++		 * 现象：固件下载成功、QCA setup 走完，hci0 也出现了，但
++		 *     btmgmt info      -> "Index list with 0 items"
++		 *     bluetoothctl list -> 空
++		 *     /sys/kernel/debug/bluetooth/hci0/ 里只有 ibs
++		 *
++		 * 原因链（插桩确认，见 docs/BLUETOOTH.md §6）：
++		 *   btqca.c 的 qca_check_bdaddr() 读控制器地址，发现它和 NVM 里的
++		 *   地址一样（本机读回来 ad:5a:00:00:00:00，打印是 00:00:00:00:5a:ad），
++		 *   就置 HCI_QUIRK_USE_BDADDR_PROPERTY —— 等于宣布「这颗芯片没有
++		 *   出厂地址，等设备树/用户态给」。hci_sync.c 的 hci_dev_setup_sync()
++		 *   随后把它标成 HCI_UNCONFIGURED，只跑 hci_unconf_init_sync()，
++		 *   mgmt 只发 Unconfigured Index Added，bluetoothctl 就看不到它。
++		 *
++		 * 给了 local-bd-address 之后：hci_dev_get_bd_addr_from_property()
++		 * 读出地址 -> hdev->set_bdaddr()（qca_set_bdaddr）写进控制器 ->
++		 * invalid_bdaddr 变 false -> 正常配置、mgmt 发 Index Added。
++		 *
++		 * 字节序：DT 里是**小端**（LSB 在前）——
++		 *     [cc 3d 78 9d d7 a6] == a6:d7:9d:78:3d:cc
++		 * 取值跟着 WiFi 的固定 MAC（a6:d7:9d:78:3d:cb）顺延一位。
++		 */
++		local-bd-address = [cc 3d 78 9d d7 a6];
++	};
++};
++
++/* ---------------------------------------------------------------- Type-C / 充电 */
++/*
++ * PM8150B 自带的 typec 控制器（TCPM）+ USB-C connector。
++ *
++ * 厂商 DT 里还挂了 displayport altmode、以及 fsa4480（SBU/音频 switch），
++ * 那些依赖 DSI/USB PHY 的 crossbar 对接，等 DP over USB-C 真正做的时候再加；
++ * 现在先把「插拔 / 角色 / PD 协商」这条最常用的路走通。
++ */
++&pm8150b_typec {
++	vdd-pdphy-supply = <&vreg_l2a_3p1>;
++	status = "okay";
++
++	connector {
++		compatible = "usb-c-connector";
++		label = "USB-C";
++		op-sink-microwatt = <10000000>;
++		/*
++		 * 现在只做 sink（充电 + PD 协商）：我们的 dwc3 是 peripheral-only，
++		 * 没有 role switch 可切；dual-role / DP altmode 需要先接上
++		 * usb_1_qmpphy 和 fsa4480，等那条线做完再打开。
++		 */
++		power-role = "sink";
++		/*
++		 * 必须显式写 data-role = "device"。
++		 * TCPM 在 sink attach 时用 tcpm_data_role_for_sink()：
++		 *   typec_caps.data == TYPEC_PORT_DFP ? TYPEC_HOST : TYPEC_DEVICE
++		 * connector 没声明 data-role 时 caps.data 退化成 DFP，
++		 * data_role 就被报成 host —— 于是 PD 一直不协商、只能拿到 SDP 5V/500mA，
++		 * 插 PD 充电器还会 cc/vbus 反复 attach-detach（表现为充电断连循环）。
++		 * 我们的 dwc3 是 peripheral-only（dr_mode = "peripheral"），本来就该是 device。
++		 */
++		data-role = "device";
++		self-powered;
++		vbus-supply = <&pm8150b_vbus>;
++
++		sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)
++			     PDO_VAR(5000, 12000, 5000)>;
++	};
++};
++
++&pm8150b_vbus {
++	regulator-min-microamp = <500000>;
++	regulator-max-microamp = <3000000>;
++	status = "okay";
++};
++
++/* ---------------------------------------------------------------- 按键 / PON */
++&pon_pwrkey {
++	status = "okay";
++};
++
++&pon_resin {
++	linux,code = <KEY_VOLUMEDOWN>;
++	status = "okay";
++};
++
++&pm8150_gpios {
++	vol_up_n: vol-up-n-state {
++		pins = "gpio6";
++		function = "normal";
++		power-source = <1>;
++		input-enable;
++		bias-pull-up;
++	};
++};
++
++/* ---------------------------------------------------------------- GPIO
++ * BT / WiFi enable、触控 pinmux 先留着（后续阶段直接引用）
++ */
++&tlmm {
++	/* ★ 实测：umi 上 NORTH tile 的 TLMM 寄存器读不了（synchronous external abort）。
++	 *
++	 *   主线 sm8250.dtsi 把 TLMM 拆成三块：
++	 *       west  @ 0xf100000 / south @ 0xf500000 / north @ 0xf900000
++	 *   驱动按 PINGROUP(id, TILE, ...) 把每个引脚分配到对应块，寄存器地址 = tile_base + 0x1000*id。
++	 *   pin 28 属于 NORTH（drivers/pinctrl/qcom/pinctrl-sm8250.c:1150），
++	 *   读 0xf900000+0x1c000 直接 abort —— 这块在 umi 上要么被安全域保护，要么没上电。
++	 *
++	 *   gpiochip_add_data_with_key() 会为每个引脚调 get_direction() 读一次寄存器，
++	 *   所以必须让 gpiolib「不认为这些引脚有效」，它就会跳过（gpiochip_line_is_valid()）：
++	 *       gpiochip_init_valid_mask()  ← 处理 gpio-reserved-ranges
++	 *       ... 之后才是 get_direction 循环
++	 *   （顺序见 drivers/gpio/gpiolib.c 的 gpiochip_add_data_with_key）
++	 *
++	 * NORTH 引脚（pinctrl-sm8250.c 里 tile=NORTH 的全部）：
++	 *   4-23, 28-31, 66-68, 77-84, 92-124
++	 *
++	 * 代价：gpio14（霍尔键）、gpio20/21（WiFi/BT 使能）暂时不可用 —— 见下面被注释掉的节点。
++	 *
++	 * ★ 2026-10-24 修正：**gpio12（面板 reset）单独放出来**。
++	 *   之前我拿 pin 28 一次 abort 就把整块 NORTH 全 reserved，连面板复位脚一起挡了。
++	 *   后来在面板驱动里单独读 0x0f90c000（GPIO12 的寄存器）是**成功**的：
++	 *       val = 0x000002c3  -> mux=0(GPIO), OE=1, drive=3, pull-up
++	 *   正是 ABL 配好的复位脚。所以 12 是好的，坏的是别的 pin。
++	 *
++	 *   所以这里拆成 <4 8>(4-11) + <13 11>(13-23)，把 12 留出来给 reset-gpios。
++	 *
++	 *   ⚠⚠ 绝对不要写「批量探测 NORTH 引脚」的诊断：我曾用
++	 *      copy_from_kernel_nofault 连读 68 个引脚，结果整机被看门狗复位 ——
++	 *      那块区域有一部分访问产生的是 SError（异步外部中止），
++	 *      无法归属到某条指令，copy_from_kernel_nofault 兜不住 -> panic -> WDT 重启。
++	 *      要验证某个引脚，就**只读那一个**。
++	 */
++	gpio-reserved-ranges = <4 8>, <13 7>, <21 3>, <28 4>, <40 4>, <66 3>, <77 2>, <80 1>, <82 3>, <92 32>;
++
++	/* BT / WiFi 使能在 gpio21 / gpio20，也是 NORTH tile —— 同上，先不做。
++	 * （定义 pinctrl state 本身不碰寄存器，但一旦有驱动 apply 就会 abort，
++	 *   所以连定义一起拿掉，避免以后误引用。） */
++
++	ts_active: ts-active-state {
++		pins = "gpio38", "gpio39";
++		function = "gpio";
++		drive-strength = <8>;
++		bias-pull-up;
++	};
++
++	ts_reset_suspend: ts-reset-suspend-state {
++		pins = "gpio38";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-pull-down;
++		output-low;
++	};
++
++	ts_int_suspend: ts-int-suspend-state {
++		pins = "gpio39";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-pull-down;
++	};
++};
++
++/* ABL 会把 dtbo 分区的 29 个 overlay 打到我们的 DTB 上；
++ * overlay 用 &label 找目标，label 不全就整体失败 -> ABL 静默回 fastboot。
++ * 这个文件给 overlay 要的 224 个 label 建了空占位节点（自动生成，别手改）。 */
++#include "umi-dtbo-stubs.dtsi"
+diff --git a/arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi-touch.dtsi b/arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi-touch.dtsi
+new file mode 100644
+index 000000000..39cc9335a
+--- /dev/null
++++ b/arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi-touch.dtsi
+@@ -0,0 +1,249 @@
++// SPDX-License-Identifier: BSD-3-Clause
++/*
++ * Xiaomi Mi 10 (umi) - STMicroelectronics "FTS" touchscreen
++ *
++ * This is the configuration that is verified working on this hardware (the
++ * Armbian sm8250-xiaomi-umi port): the controller sits on GENI SE5
++ * (i2c@a94000 == &i2c13) at 400 kHz, with the two bus pads muxed to the
++ * "qup13" function exactly as the vendor stack leaves them.
++ *
++ * History: this used to be bit-banged from the driver because the SE has its
++ * FIFO interface disabled (GENI_IF_DISABLE_RO) so mainline geni-i2c has to go
++ * through GPI DMA, and GPI never answered EV ALLOCATE:
++ *
++ *     gpi a00000.dma-controller: cmd: EV ALLOCATE completion timeout:2
++ *     geni_i2c a94000.i2c: error -ENODEV: Failed to setup GPI DMA mode
++ *
++ * A working tree on the same SoC proves the controller can be used, so this
++ * file now just enables the standard QUP path.  patches/umi-i2c.c (the
++ * bit-bang adapter) is still in the tree; it simply has no device node any
++ * more, so nothing binds to it.
++ *
++ * The three pins the driver still owns:
++ *   - reset : GPIO38, active high (out of reset)
++ *             vendor: fts,reset-gpio = <&tlmm 0x26 0x00>
++ *   - irq   : GPIO39, level low
++ *             vendor: fts,irq-gpio = <&tlmm 0x27 0x2008>
++ *
++ * Supply mapping, re-verified against the vendor DT (dump/downstream.dts,
++ * fts@49) and against the running kernel:
++ *
++ *   vdd  (bus / IO, 1.8 V) -> vreg_l1c_1p8
++ *       = RPMH resource LDOc1.  The vendor DT calls the very same resource
++ *       pm8150a_l1 (aliases L1C = ".../rpmh-regulator-ldoc1/regulator-
++ *       pm8150a-l1"); mainline simply labels pmic-id "c" as PM8150L.  At
++ *       runtime the consumer shows up as "13-0049-vdd" on vreg_l1c_1p8.
++ *   avdd (power, 3.3 V)    -> touch_vddio_vreg  (GPIO69 gated rail)
++ *       = the vendor's disp_vddio_vreg (gpio = <&tlmm 0x45>), shared with
++ *       the display flex.  The vendor driver sets it to 3300000 uV.
++ *
++ * The vendor power-up order is enable(vdd) -> set_voltage(avdd) ->
++ * enable(avdd); fts_power_on() in fts521/fts.c does exactly that.
++ */
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/interrupt-controller/irq.h>
++
++/* --- pin states ---------------------------------------------------------- */
++
++/*
++ * No bus pin state here on purpose: gpio36/gpio37 belong to the QUP now and
++ * are described by qup_i2c13_default in sm8250.dtsi (function "qup13").
++ * Claiming them with function "gpio" would put them back into the GPIO block
++ * and the controller would no longer drive them.
++ */
++&tlmm {
++	/* The vendor parks the interrupt line with a pull-down while the chip is
++	 * asleep, so it cannot float high and keep the GIC armed. */
++	ts_int_active: ts-int-active-state {
++		pins = "gpio39";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-pull-up;
++		input-enable;
++	};
++
++	ts_int_sleep: ts-int-sleep-state {
++		pins = "gpio39";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-pull-down;
++		input-enable;
++	};
++
++	/*
++	 * Reset is driven through gpiod (fts,reset-gpio / reset-gpios), so the
++	 * pin state only has to put the pad into GPIO mode - no output-* here,
++	 * that would fight the descriptor.
++	 */
++	ts_rst_active: ts-rst-active-state {
++		pins = "gpio38";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-pull-up;
++	};
++
++	ts_rst_sleep: ts-rst-sleep-state {
++		pins = "gpio38";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-pull-down;
++	};
++};
++
++/* --- the QUP stack ------------------------------------------------------- */
++
++&qupv3_id_1 {
++	status = "okay";
++};
++
++/*
++ * gpi_dma1 needs a non-zero EE register offset.
++ *
++ * sm8250 has two GPI DMA controllers whose EE registers do not sit at the
++ * start of their register windows.  Newer mainline names the two variants
++ * "qcom,sm8250-gpi-dma-0" (ee_offset 0x1000) and "qcom,sm8250-gpi-dma-1"
++ * (ee_offset 0x6000); this tree (6.12.94) only carries the single
++ * "qcom,sm8250-gpi-dma", whose match data is ee_offset 0.  With that offset
++ * the driver computes a wrong ee_base for wrap1 and every GPI command goes
++ * unanswered:
++ *
++ *     gpi a00000.dma-controller: cmd: EV ALLOCATE completion timeout:2
++ *     gpi a00000.dma-controller: error alloc_ev_chan:-5
++ *     geni_i2c a94000.i2c: error -ENODEV: Failed to setup GPI DMA mode
++ *
++ * The two match entries are added by scripts/build.sh, which patches
++ * drivers/dma/qcom/gpi.c in the kernel tree before building.
++ */
++&gpi_dma1 {
++	compatible = "qcom,sm8250-gpi-dma-1", "qcom,sdm845-gpi-dma";
++	status = "okay";
++};
++
++/* --- the bus and the controller ----------------------------------------- */
++
++&i2c13 {
++	status = "okay";
++	clock-frequency = <400000>;
++
++	touchscreen@49 {
++		compatible = "st,fts";
++		reg = <0x49>;
++
++		interrupt-parent = <&tlmm>;
++		interrupts = <39 IRQ_TYPE_LEVEL_LOW>;
++
++		/*
++		 * Name the states after what the drivers actually look up.
++		 *
++		 * fts521/fts.h redefines the kernel's state names:
++		 *
++		 *     #define PINCTRL_STATE_ACTIVE  "default"
++		 *     #define PINCTRL_STATE_SUSPEND "sleep"
++		 *
++		 * so fts521/fts.c looks up "default" and "sleep" (not
++		 * "active"/"suspend").  The "default" lookup is a dev_err and
++		 * used to print "Can not lookup default pinstate -19"; the
++		 * "sleep" one is a dev_dbg, so it failed silently and only
++		 * "[ FTS ] fts_probe: Failed to init pinctrl" was left behind.
++		 *
++		 * pinctrl_bind_pins() in drivers/base/pinctrl.c also wants a
++		 * "default" state.  The vendor (Xiaomi) driver spelling
++		 * "pmx_ts_active"/"pmx_ts_suspend" is kept as well.
++		 */
++		pinctrl-names = "default", "sleep",
++				"active", "suspend",
++				"pmx_ts_active", "pmx_ts_suspend";
++		pinctrl-0 = <&ts_int_active &ts_rst_active>;	/* default */
++		pinctrl-1 = <&ts_int_sleep &ts_rst_sleep>;	/* sleep */
++		pinctrl-2 = <&ts_int_active &ts_rst_active>;
++		pinctrl-3 = <&ts_int_sleep &ts_rst_sleep>;
++		pinctrl-4 = <&ts_int_active &ts_rst_active>;
++		pinctrl-5 = <&ts_int_sleep &ts_rst_sleep>;
++
++		/*
++		 * Supply mapping taken from MIUI, not from the other working DTS.
++		 *
++		 * On a running MIUI the regulator state is:
++		 *   vreg_l1c_1p8     1800 mV  consumer 4900000003.touchscreen-vdd
++		 *   touch_vddio_vreg 3300 mV  1 user
++		 * so vdd (bus) is the 1.8 V PM8150L LDO and avdd (power) is the
++		 * GPIO69 gated rail.  That also matches the vendor driver, which
++		 * programs avdd with regulator_set_voltage(avdd, 3300000, 3300000).
++		 *
++		 * The other working tree has these two swapped; with avdd on the
++		 * fixed 1.8 V rail that call fails and every raw sample comes back
++		 * identical (-13462), i.e. the analogue front end never sees a
++		 * valid acquisition.
++		 */
++		vdd-supply = <&vreg_l1c_1p8>;
++		avdd-supply = <&touch_vddio_vreg>;
++		/*
++		 * 同一份 DT 要同时伺候两个驱动：
++		 *   fts521（主线移植版，默认）只认 regulator_* / default-fw-name
++		 *   stfts （厂商 5.2.4，TOUCH=stfts 时用）认 pwr/bus-reg-name 和
++		 *          config-array（它按 lockdown 的 tp-vendor 选 FW/limits）
++		 * 多出来的属性对另一边是无害的，所以不拆两份 DT。
++		 *
++		 * tp-vendor 0x42 / module 1 = 本机 lockdown（53 42 32 01 74 02 32 01）。
++		 */
++		fts,default-fw-name = "st_fts_j2_2.ftb";
++		fts,regulator_dvdd = "vdd";
++		fts,regulator_avdd = "avdd";
++
++		fts,pwr-reg-name = "avdd";
++		fts,bus-reg-name = "vdd";
++		fts,config-array-size = <1>;
++
++		fts,irq-gpio = <&tlmm 39 GPIO_ACTIVE_LOW>;
++		fts,irq-gpio-name = "fts_irq";
++		fts,reset-gpio-enable;
++		/*
++		 * 两套属性并存：
++		 *   fts,reset-gpio  6.12 的驱动自己解析（vendor 命名）
++		 *   reset-gpios     7.x 的驱动用 devm_gpiod_get(dev, "reset") 取
++		 */
++		fts,reset-gpio = <&tlmm 38 GPIO_ACTIVE_HIGH>;
++		reset-gpios = <&tlmm 38 GPIO_ACTIVE_HIGH>;
++		fts,reset-gpio-name = "fts_rst";
++		/*
++		 * 厂商 stfts 驱动把这个值直接喂给 request_threaded_irq(…, NULL,
++		 * handler, flags, …)。主线程为 NULL 时**必须带 IRQF_ONESHOT**，
++		 * 否则内核返回 -EINVAL，驱动只打一句 "Request irq failed" 就整个
++		 * probe 失败。厂商 DT 用的是 0x2008 = IRQF_ONESHOT |
++		 * IRQF_TRIGGER_LOW，照抄。
++		 *（fts521 不看这个属性，改了对它没影响。）
++		 */
++		fts,irq-flags = <0x2008>;	/* IRQF_ONESHOT | IRQF_TRIGGER_LOW */
++
++		fts,x-max = <1080>;
++		fts,y-max = <2340>;
++
++		touchscreen-size-x = <1080>;
++		touchscreen-size-y = <2340>;
++
++		status = "okay";
++
++		/*
++		 * 厂商 stfts 驱动按 lockdown 的 tp-vendor 选 FW/limits。
++		 * 本机 lockdown = 53 42 32 01 74 02 32 01 → tp-vendor 0x42, module 1。
++		 * 子节点必须放在所有属性之后（dtc 要求 properties precede subnodes）。
++		 */
++		fts,cfg_0 {
++			fts,tp-vendor = <0x42>;
++			fts,tp-module = <1>;
++			fts,fw-name = "st_fts_j2_2.ftb";
++			fts,limit-name = "stm_fts_production_limits_2.csv";
++		};
++	};
++};
++
++/*
++ * No regulator-always-on on vreg_l1c_1p8 any more.
++ *
++ * The old note claimed this rail is the vendor's pm8150a_l1 and that mainline
++ * cannot drive it, so it had to be pinned on.  That was wrong twice over: it
++ * IS the same RPMH resource (LDOc1), and the vendor driver enables it itself
++ * (consumer "13-0049-vdd").  Pinning it always-on only kept the touch rail
++ * powered across suspend, where fts_power_off() does disable it on purpose.
++ */
+diff --git a/arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi.dts b/arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi.dts
+new file mode 100644
+index 000000000..228ac36df
+--- /dev/null
++++ b/arch/arm64/boot/dts/qcom/sm8250-xiaomi-umi.dts
+@@ -0,0 +1,697 @@
++// SPDX-License-Identifier: BSD-3-Clause
++/*
++ * Xiaomi Mi 10 (umi / M2001J2C) — SM8250 "kona" — 板级 DTS（**唯一一份**）
++ *
++ * ★ 为什么只剩一个文件（2026-11 合并）
++ *   以前板级文件有三个：
++ *       sm8250-xiaomi-umi.dts       —— 只有显示 + GPU + 半成品 WiFi
++ *       sm8250-xiaomi-umi-wifi.dts  —— 显示 + 触摸 + 电池 + QCA6390（真正能用的那颗）
++ *       sm8250-xiaomi-umi-plus.dts  —— 早期“进阶外设”试验，PMU 供电压根是错的
++ *   于是出现下面这种事故：mkimage.sh 打的是 -wifi.dts，手工跑 pack-umi.py
++ *   默认打的是 umi.dts，刷进去之后——没有 WiFi、没有电池、蓝牙连 probe 都不做
++ *   （qca6390-pmu 的 pwrseq 只定义在 -wifi.dts 里，而蓝牙要 pwrseq 拉 BT_EN）。
++ *
++ *   现在只有这一颗 DTB：out/sm8250-xiaomi-umi.dtb，内容 = 板子上的一切。
++ *   仍然按功能拆成 .dtsi（common / panels / touch / battery / dtbo-stubs），
++ *   那是“一个文件太长”的拆分，**不是**“两个变体”，任何一个 include 都不许漏。
++ *
++ * 里面每一块的来历、踩过的坑都写在各自的 .dtsi 里，这里只保留板级接线。
++ */
++/dts-v1/;
++
++#include <dt-bindings/sound/qcom,q6afe.h>
++#include <dt-bindings/sound/qcom,q6asm.h>
++#include "sm8250-xiaomi-umi-common.dtsi"
++
++/ {
++	model = "Xiaomi Mi 10";
++	compatible = "xiaomi,umi", "qcom,sm8250";
++
++	/* ------------------------------------------------------------ QCA6390 供电/开关
++	 * 供电对应关系以 umi 的下游 DT（qcom,cnss-qca6390）为准：
++	 *     vdd-wlan-aon  (.95V) = pm8150_s6   -> vddaon
++	 *     vdd-wlan-dig  (.95V) = pm8009_s2   -> vddpmu / vddrfa0p95
++	 *     vdd-wlan-io   (1.8V) = pm8150_s4   -> vddio
++	 *     vdd-wlan-rfa1 (1.9V) = pm8150_s5   -> vddrfa1p9 / vddpcie1p9
++	 *     vdd-wlan-rfa2 (1.35V)= pm8150a_s8  -> vddrfa1p3 / vddpcie1p3
++	 *
++	 * vddpmu / vddrfa0p95 **不能**接 vreg_s6a_0p95：那是 AON，不是 digital。
++	 * 接错的后果是 PM8009 S2 一个 consumer 都没有，regulator_summary 里长期
++	 * `vreg_s2f_0p5  0 users  512mV`，QCA6390 的 PMU 数字域没电 —— 卡片在
++	 * 总线上永远 Detect.Quiet，WiFi 和蓝牙一起哑。
++	 */
++	qca6390_pmu: qca6390-pmu {
++		compatible = "qcom,qca6390-pmu";
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&bt_default_state>, <&wlan_default_state>;
++
++		vddaon-supply = <&vreg_s6a_0p95>;
++		vddpmu-supply = <&vreg_s2f_0p95>;
++		vddrfa0p95-supply = <&vreg_s2f_0p95>;
++		vddrfa1p3-supply = <&vreg_s8c_1p35>;
++		vddrfa1p9-supply = <&vreg_s5a_1p9>;
++		vddpcie1p3-supply = <&vreg_s8c_1p35>;
++		vddpcie1p9-supply = <&vreg_s5a_1p9>;
++		vddio-supply = <&vreg_s4a_1p8>;
++
++		/* pwrseq-qcom-wcn 在 probe 时 devm_gpiod_get_optional("wlan-enable"/"bt-enable")
++		 * 拿这两条线。**不要**再给它们加 gpio-hog：hog 会独占，pwrseq 拿到
++		 * -EBUSY 后设备根本不存在，early power-on 也就永远没人做。 */
++		wlan-enable-gpios = <&tlmm 20 GPIO_ACTIVE_HIGH>;
++		bt-enable-gpios = <&tlmm 21 GPIO_ACTIVE_HIGH>;
++
++		/* 子节点 ldo0..ldo9：新驱动不消费，但蓝牙节点的 6 条 supply 引用这些
++		 * regulator（pwrseq 靠它认 consumer），删了 BT 就起不来。 */
++		regulators {
++			vreg_pmu_rfa_cmn: ldo0 { regulator-name = "vreg_pmu_rfa_cmn"; };
++			vreg_pmu_aon_0p59: ldo1 { regulator-name = "vreg_pmu_aon_0p59"; };
++			vreg_pmu_wlcx_0p8: ldo2 { regulator-name = "vreg_pmu_wlcx_0p8"; };
++			vreg_pmu_wlmx_0p85: ldo3 { regulator-name = "vreg_pmu_wlmx_0p85"; };
++			vreg_pmu_btcmx_0p85: ldo4 { regulator-name = "vreg_pmu_btcmx_0p85"; };
++			vreg_pmu_rfa_0p8: ldo5 { regulator-name = "vreg_pmu_rfa_0p8"; };
++			vreg_pmu_rfa_1p2: ldo6 { regulator-name = "vreg_pmu_rfa_1p2"; };
++			vreg_pmu_rfa_1p7: ldo7 { regulator-name = "vreg_pmu_rfa_1p7"; };
++			vreg_pmu_pcie_0p9: ldo8 { regulator-name = "vreg_pmu_pcie_0p9"; };
++			vreg_pmu_pcie_1p8: ldo9 { regulator-name = "vreg_pmu_pcie_1p8"; };
++		};
++	};
++};
++
++/* ================================================================= 显示子系统 */
++/*
++ * 这里**只**给 regulator 的引用，不给任何电压值：
++ *   下游 DT：qcom,mdss_dsi_ctrl0 vdda-1p2-supply = pm8150_l9  0x124f80 = 1.2V
++ *            qcom,mdss_dsi_phy0  vdda-0p9-supply = pm8150_l5  0xd6d80  = 0.88V
++ *   本 DT：  vreg_l9a_1p2 min=max=1200000 ✓ / vreg_l5a_0p88 min=max=880000 ✓
++ * 两路轨在下游都是固定值 + proxy-consumer，ABL 起来时就已开着，
++ * regulator_enable() 只发 enable，改不了电压。
++ */
++&mdss {
++	status = "okay";
++};
++
++&mdss_dsi0 {
++	vdda-supply = <&vreg_l9a_1p2>;
++	status = "okay";
++};
++
++&mdss_dsi0_phy {
++	vdds-supply = <&vreg_l5a_0p88>;
++	status = "okay";
++};
++
++/* 面板：timing / DSC / init 序列全在 DT 里，驱动 patches/panel-xiaomi-umi.c 只读不猜 */
++#include "xiaomi-umi-panels.dtsi"
++
++/* 复位脚：下游 qcom,platform-reset-gpio = <&tlmm 0x0c 0x00>（GPIO12，active high）。
++ * GPIO12 在 TLMM NORTH tile，common.dtsi 里专门把 gpio-reserved-ranges 拆开把它
++ * 留出来（12 单独是可读写的，坏的是别的 pin）。拿不到时驱动退化成“无复位模式”。 */
++&mdss_dsi0 {
++	umi-panel@0 {
++		reset-gpios = <&tlmm 12 GPIO_ACTIVE_HIGH>;
++	};
++};
++
++/* ================================================================= 触摸 */
++#include "sm8250-xiaomi-umi-touch.dtsi"
++
++/* ================================================================= 电量计/充电 */
++#include "xiaomi-umi-battery.dtsi"
++
++/* ================================================================= TLMM 保留区
++ * 实测：umi 上 TLMM NORTH tile 的寄存器读不了（synchronous external abort）。
++ * 之前把整片 NORTH 都 reserved，连 WiFi/BT 使能脚（gpio20/21）和面板复位
++ * （gpio12）一起挡了。作者镜像反编译出来的 dtb 只保留 <28 4>、<40 4> 两段，
++ * 也就是说 20/21/79/81 全是可用的 —— 这正是他那边 WiFi 能起来的前提。
++ * 现在照抄：只留 28-31 / 40-43 两段。
++ *
++ * ⚠ 绝对不要写“批量探测 NORTH 引脚”的诊断：曾用 copy_from_kernel_nofault
++ *   连读 68 个引脚，SError 异步外部中止兜不住 -> panic -> WDT 重启。
++ *   要验证某个引脚，就只读那一个。
++ */
++&tlmm {
++	/delete-property/ gpio-reserved-ranges;
++	gpio-reserved-ranges = <28 4>, <40 4>;
++
++	/* wlan 是 output-low：上电靠 pwrseq 的 power_on 拉高，不要在这里拉高 */
++	bt_default_state: bt-default-state {
++		pins = "gpio21";
++		function = "gpio";
++		drive-strength = <16>;
++		output-high;
++		bias-pull-up;
++	};
++
++	wlan_default_state: wlan-default-state {
++		pins = "gpio20";
++		function = "gpio";
++		drive-strength = <16>;
++		output-low;
++		bias-pull-up;
++	};
++
++	/* 下游 DT 有 qcom,sw-ctrl-gpio = <&tlmm 124>，cnss2 只在链路恢复失败时打印
++	 * 它当前电平，从没主动写过。既然 NORTH 可访问了，就当第三道门顺手顶高。 */
++	sw_ctrl_hog: sw-ctrl-hog {
++		gpio-hog;
++		gpios = <124 GPIO_ACTIVE_HIGH>;
++		output-high;
++		line-name = "sw-ctrl";
++	};
++};
++
++/* ================================================================= GPU (Adreno 650)
++ * 固件（a650_zap.mdt/.b00-.b02、a650_sqe.fw、a650_gmu.bin）必须打进 initramfs：
++ * adreno 是内建驱动，probe 发生在 rootfs 挂载之前，只放 /lib/firmware 会 -2。
++ * 详见 docs/GPU.md。
++ */
++&gmu {
++	status = "okay";
++};
++
++&gpu {
++	status = "okay";
++
++	zap-shader {
++		firmware-name = "qcom/a650_zap.mdt";
++	};
++};
++
++/* ============================================================= PCIe0 -> QCA6390
++ * 一个属性都不删：pinctrl-0 负责把 pin79/81 的 mux 切到 GPIO 功能，
++ * 没有它即使 gpiod 写了值也落不到引脚上（曾经的表现：Phy link never came up）。
++ */
++&pcie0 {
++	status = "okay";
++};
++
++&pcie0_phy {
++	vdda-phy-supply = <&vreg_l5a_0p88>;
++	vdda-pll-supply = <&vreg_l9a_1p2>;
++	status = "okay";
++};
++
++&pcieport0 {
++	wifi@0 {
++		compatible = "pci17cb,1101";
++		reg = <0x10000 0x0 0x0 0x0 0x0>;
++
++		/* 固定 MAC：不打这个属性时卡片固件每次开机现生成一个。ath11k 在
++		 * ath11k_mac_register() 里 device_get_mac_address() 优先取 DT 这个值
++		 * （QCA6390 单 radio，pdevs_macaddr_valid 永远 false）。
++		 * 换 MAC 只改这一行，然后重打包 boot.img。 */
++		local-mac-address = [a6 d7 9d 78 3d cb];
++
++		vddrfacmn-supply = <&vreg_pmu_rfa_cmn>;
++		vddaon-supply = <&vreg_pmu_aon_0p59>;
++		vddwlcx-supply = <&vreg_pmu_wlcx_0p8>;
++		vddwlmx-supply = <&vreg_pmu_wlmx_0p85>;
++		vddrfa0p8-supply = <&vreg_pmu_rfa_0p8>;
++		vddrfa1p2-supply = <&vreg_pmu_rfa_1p2>;
++		vddrfa1p7-supply = <&vreg_pmu_rfa_1p7>;
++		vddpcie0p9-supply = <&vreg_pmu_pcie_0p9>;
++		vddpcie1p8-supply = <&vreg_pmu_pcie_1p8>;
++	};
++};
++
++/* 蓝牙节点在 common.dtsi（&uart6 + bluetooth），因为 serial1 alias 必须和
++ * uart6 在一起 —— 漏了 alias 会 -ENODEV，没绑上的 uart6 还会把 qnoc 的
++ * sync_state() 拖住，pcie0 跟着不 probe，表现就是“蓝牙没起来 WiFi 也没了”。 */
++
++/* ============================================================ 远程处理器
++ * ADSP = 音频（Q6AFE/Q6ASM/VA macro），SLPI = 传感器 DSP（SSC，走 fastrpc），
++ * CDSP = 计算，Venus = 视频编解码。主线驱动都在，缺的是固件。
++ *
++ * ★ 固件从 **modem 分区的 image/** 来（不是 dsp 分区，那里只有 DSP 侧 .so）：
++ *     /dev/disk/by-partlabel/modem → image/adsp.mdt + image/adsp.b00..b18
++ *   装到手机上要改名：
++ *     adsp.mdt            -> /lib/firmware/qcom/sm8250/umi/adsp.mbn
++ *     adsp.b00 … adsp.b18 -> 同目录原名（qcom_mdt_load 按 .mbn/.mdt 前缀找 bNN）
++ *   现成脚本：tools/install-adsp-firmware.sh
++ *
++ * 目前只开 ADSP（音频的第一块砖）。SLPI/CDSP/Venus 等做到再说，
++ * 缺固件时每开一个都会刷一串 -ENOENT。
++ */
++&adsp {
++	status = "okay";
++	firmware-name = "qcom/sm8250/umi/adsp.mbn";
++
++	/* AVCS 音频拓扑和 ADSP 的 audio PD 共用 0x1801 这个音频 context bank，
++	 * 需要让 glink 上的 APR 总线上报这条 IOMMU 映射，否则拓扑加载失败。
++	 * （armbian 0044 里同样的写法；不加这一行，后面做声卡时会卡在这里） */
++	glink-edge {
++		apr {
++			service@3 {
++				iommus = <&apps_smmu 0x1801 0x0>;
++			};
++		};
++	};
++};
++
++&cdsp {
++	firmware-name = "qcom/sm8250/umi/cdsp.mbn";
++	status = "disabled";
++};
++
++&slpi {
++	firmware-name = "qcom/sm8250/umi/slpi.mbn";
++	status = "disabled";
++};
++
++/* ======================================================= 视频编解码（Venus）
++ * 硬件是独立的 Venus 核（SM8250 里叫 video-codec@aa00000），不是 GPU 里的单元：
++ *   - 解码：H.264 / HEVC / VP9 / (MPEG2 视固件而定)
++ *   - 编码：H.264 / HEVC
++ * 主线驱动是三块模块：venus-core / venus-dec / venus-enc，config 里已经有
++ * CONFIG_VIDEO_QCOM_VENUS=m。
++ *
++ * 固件从 modem 分区的 image/ 来（venus.mdt + venus.b00..b19），
++ * 装成 /lib/firmware/qcom/sm8250/umi/venus.mbn + venus.bNN
++ * （tools/install-venus-firmware.sh）。
++ *
++ * ★ 还要打开 &videocc：venus 的 core/vcodec0 时钟和 MVS0/MVS0C 两个 GDSC
++ *   都由它提供，videocc 关着时 venus probe 会一直 -EPROBE_DEFER。
++ * ★ 它的固件要映射到 reserved-memory 里的 video_mem（sm8250.dtsi 已给 5 MB），
++ *   我们不要动那块。
++ */
++&videocc {
++	status = "okay";
++};
++
++&venus {
++	status = "okay";
++	firmware-name = "qcom/sm8250/umi/venus.mbn";
++};
++
++/* ============================================================ 音频
++ *
++ * 硬件拓扑（照 armbian 0044 + 厂商 umi-audio-overlay 移植）：
++ *
++ *   播放：APPS → ADSP(q6asm/q6afe) → TERTIARY TDM(mi2s2 pin: gpio133/134/135/137)
++ *         → 两颗 CS35L41（I2C 控制 + TDM 音频）→ 喇叭/听筒
++ *   录音：WCD938x（SoundWire swr1/swr2）＋ LPASS VA macro 的 DMIC
++ *
++ * 板级细节：
++ *   - 0x40 那颗 amp 的 sound-name-prefix 是 RCV，接**上**听筒；
++ *     0x42 是 LCV，接**下**喇叭。TDM slot 0 = 左声道，所以 dai link 里
++ *     先写 cs35l41_rcv（0x42），才能保证"左声道在下面那颗喇叭"。
++ *   - 两颗 amp 共用 reset 脚 GPIO114，IRQ 分开：112=LCV，113=RCV。
++ *   - WCD938x reset = GPIO32（active low），micbias 必须 2.75V（1.8V 会饿死 AMIC）。
++ *   - PD：ADSP 的 avs/audio 需要 pd-mapper 在 userspace 广播，否则声卡不 bind。
++ */
++
++/ {
++	wcd938x: audio-codec {
++		compatible = "qcom,wcd9380-codec";
++		status = "okay";
++		reset-gpios = <&tlmm 32 GPIO_ACTIVE_LOW>;
++
++		vdd-buck-supply = <&vreg_s4a_1p8>;
++		vdd-rxtx-supply = <&vreg_s4a_1p8>;
++		vdd-io-supply = <&vreg_s4a_1p8>;
++		vdd-mic-bias-supply = <&vreg_bob>;
++
++		/* 2.75 V：厂商 umi-audio-overlay 的 cdc-micbias*-mv 就是这个值；
++		 * 用 1.8V 会让 AMIC 没偏置、耳机按键（mbhc）也检测不到 */
++		qcom,micbias1-microvolt = <2750000>;
++		qcom,micbias2-microvolt = <2750000>;
++		qcom,micbias3-microvolt = <2750000>;
++		qcom,micbias4-microvolt = <2750000>;
++		qcom,mbhc-buttons-vthreshold-microvolt = <75000 150000 237000 500000 500000 500000 500000 500000>;
++		qcom,mbhc-headset-vthreshold-microvolt = <1700000>;
++		qcom,mbhc-headphone-vthreshold-microvolt = <50000>;
++		qcom,rx-device = <&wcd_rx>;
++		qcom,tx-device = <&wcd_tx>;
++
++		#sound-dai-cells = <1>;
++	};
++};
++
++&sound {
++	compatible = "qcom,sm8250-sndcard";
++	model = "Xiaomi Mi 10";
++	widgets =
++		"Microphone", "Digital Mic0",
++		"Microphone", "Digital Mic1",
++		"Microphone", "Digital Mic2",
++		"Microphone", "Digital Mic3",
++		"Microphone", "Digital Mic4",
++		"Microphone", "Digital Mic5";
++	audio-routing =
++		"AMIC1", "MIC BIAS1",
++		"AMIC2", "MIC BIAS2",
++		"AMIC3", "MIC BIAS3",
++		"AMIC4", "MIC BIAS3",
++		"AMIC5", "MIC BIAS4",
++		"Digital Mic0", "MIC BIAS3",
++		"Digital Mic1", "MIC BIAS3",
++		"Digital Mic2", "MIC BIAS1",
++		"Digital Mic3", "MIC BIAS1",
++		"Digital Mic4", "MIC BIAS4",
++		"Digital Mic5", "MIC BIAS4",
++		"TX SWR_ADC0", "ADC1_OUTPUT",
++		"TX SWR_ADC1", "ADC2_OUTPUT",
++		"TX SWR_ADC2", "ADC3_OUTPUT",
++		"TX SWR_ADC3", "ADC4_OUTPUT",
++		"DMIC1 Pin", "MIC BIAS3",
++		"DMIC2 Pin", "MIC BIAS3",
++		"DMIC3 Pin", "MIC BIAS1",
++		"DMIC4 Pin", "MIC BIAS1",
++		"DMIC5 Pin", "MIC BIAS4",
++		"DMIC6 Pin", "MIC BIAS4",
++		"TX SWR_DMIC0", "DMIC1_OUTPUT",
++		"TX SWR_DMIC1", "DMIC2_OUTPUT",
++		"TX SWR_DMIC2", "DMIC3_OUTPUT",
++		"TX SWR_DMIC3", "DMIC4_OUTPUT",
++		"TX SWR_DMIC4", "DMIC5_OUTPUT",
++		"TX SWR_DMIC5", "DMIC6_OUTPUT",
++		"TX SWR_DMIC6", "DMIC7_OUTPUT",
++		"TX SWR_DMIC7", "DMIC8_OUTPUT",
++		"VA_AIF1 CAP", "VA_SWR_CLK",
++		"VA_AIF2 CAP", "VA_SWR_CLK",
++		"VA_AIF3 CAP", "VA_SWR_CLK",
++		"Digital Mic0", "VA MIC BIAS3",
++		"Digital Mic1", "VA MIC BIAS3",
++		"Digital Mic2", "VA MIC BIAS1",
++		"Digital Mic3", "VA MIC BIAS1",
++		"Digital Mic4", "VA MIC BIAS4",
++		"Digital Mic5", "VA MIC BIAS4",
++		"DMIC0 Pin", "Digital Mic0",
++		"DMIC1 Pin", "Digital Mic1",
++		"DMIC2 Pin", "Digital Mic2",
++		"DMIC3 Pin", "Digital Mic3",
++		"DMIC4 Pin", "Digital Mic4",
++		"DMIC5 Pin", "Digital Mic5",
++		"VA DMIC0", "VA MIC BIAS3",
++		"VA DMIC1", "VA MIC BIAS3",
++		"VA DMIC2", "VA MIC BIAS1",
++		"VA DMIC3", "VA MIC BIAS1",
++		"VA DMIC4", "VA MIC BIAS4",
++		"VA DMIC5", "VA MIC BIAS4",
++		"VA SWR_ADC0", "VA_SWR_CLK",
++		"VA SWR_ADC0", "ADC1_OUTPUT",
++		"VA SWR_ADC1", "ADC2_OUTPUT",
++		"VA SWR_ADC2", "ADC3_OUTPUT",
++		"VA SWR_ADC3", "ADC4_OUTPUT",
++		"VA SWR_MIC0", "VA_SWR_CLK",
++		"VA SWR_MIC1", "VA_SWR_CLK",
++		"VA SWR_MIC2", "VA_SWR_CLK",
++		"VA SWR_MIC3", "VA_SWR_CLK",
++		"VA SWR_MIC4", "VA_SWR_CLK",
++		"VA SWR_MIC5", "VA_SWR_CLK",
++		"VA SWR_MIC6", "VA_SWR_CLK",
++		"VA SWR_MIC7", "VA_SWR_CLK",
++		"VA SWR_MIC0", "DMIC1_OUTPUT",
++		"VA SWR_MIC1", "DMIC2_OUTPUT",
++		"VA SWR_MIC2", "DMIC3_OUTPUT",
++		"VA SWR_MIC3", "DMIC4_OUTPUT",
++		"VA SWR_MIC4", "DMIC5_OUTPUT",
++		"VA SWR_MIC5", "DMIC6_OUTPUT",
++		"VA SWR_MIC6", "DMIC7_OUTPUT",
++		"VA SWR_MIC7", "DMIC8_OUTPUT";
++	pinctrl-names = "default";
++	pinctrl-0 = <&tert_tdm_active>;
++
++	mm1-dai-link {
++		link-name = "MultiMedia1";
++		cpu {
++			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA1>;
++		};
++	};
++
++	mm2-dai-link {
++		link-name = "MultiMedia2";
++		cpu {
++			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA2>;
++		};
++	};
++
++	/* 喇叭 + 听筒：Tertiary TDM（mi2s2 引脚） */
++	speaker-dai-link {
++		link-name = "Tertiary TDM Playback";
++		cpu {
++			sound-dai = <&q6afedai TERTIARY_MI2S_RX>;
++		};
++
++		platform {
++			sound-dai = <&q6routing>;
++		};
++
++		codec {
++			sound-dai = <&cs35l41_rcv 0>, <&cs35l41_speaker 0>;
++		};
++	};
++
++	/* 回采：amp 把处理后的输出回灌到 ASP TX（通话 AEC 用） */
++	amp-loopback-dai-link {
++		link-name = "Tertiary TDM Capture";
++		cpu {
++			sound-dai = <&q6afedai TERTIARY_TDM_TX_0>;
++		};
++
++		platform {
++			sound-dai = <&q6routing>;
++		};
++
++		codec {
++			sound-dai = <&cs35l41_rcv 0>, <&cs35l41_speaker 0>;
++		};
++	};
++
++	wcd-capture-dai-link {
++		link-name = "WCD Capture";
++		cpu {
++			sound-dai = <&q6afedai TX_CODEC_DMA_TX_3>;
++		};
++
++		platform {
++			sound-dai = <&q6routing>;
++		};
++
++		codec {
++			sound-dai = <&wcd938x 1>, <&swr2 0>, <&txmacro 0>;
++		};
++	};
++
++	va-dai-link {
++		link-name = "VA Capture";
++		cpu {
++			sound-dai = <&q6afedai VA_CODEC_DMA_TX_0>;
++		};
++
++		platform {
++			sound-dai = <&q6routing>;
++		};
++
++		codec {
++			sound-dai = <&vamacro 0>;
++		};
++	};
++};
++
++&q6afedai {
++	dai@20 {
++		reg = <TERTIARY_MI2S_RX>;
++		qcom,sd-lines = <1>;
++	};
++};
++
++&q6asmdai {
++	/* ADSP 通过 apps_smmu 的音频 context bank 访问共享内存；
++	 * 不给 iommus 时 pdata->sid=-1，DSP 拿到裸物理地址会访问失败，
++	 * 写数据被拒（ASM_DATA_CMD_WRITE_V2 -> 0xa ENOTREADY）。 */
++	iommus = <&apps_smmu 0x1801 0x0>;
++
++	dai@0 {
++		reg = <0>;
++	};
++
++	dai@1 {
++		reg = <1>;
++	};
++
++	dai@2 {
++		reg = <2>;
++	};
++};
++
++/* SoundWire：swr1 是 RX（播放侧），swr2 是 TX（录音侧） */
++&swr1 {
++	status = "okay";
++	qcom,dout-ports = <5>;
++	qcom,din-ports = <0>;
++
++	wcd_rx: wcd9380-rx@0,4 {
++		compatible = "sdw20217010d00";
++		reg = <0 4>;
++		qcom,rx-port-mapping = <1 2 3 4 5>;
++	};
++};
++
++&swr2 {
++	status = "okay";
++	qcom,din-ports = <4>;
++	qcom,dout-ports = <0>;
++
++	wcd_tx: wcd9380-tx@0,3 {
++		compatible = "sdw20217010d00";
++		reg = <0 3>;
++		qcom,tx-port-mapping = <2 3 4 5>;
++	};
++};
++
++/* 两颗 CS35L41 功放 */
++&i2c3 {
++	status = "okay";
++	clock-frequency = <1000000>;
++
++	cs35l41_speaker: speaker-amp@40 {
++		compatible = "cirrus,cs35l41";
++		status = "okay";
++		reg = <0x40>;
++		interrupt-parent = <&tlmm>;
++		interrupts = <113 IRQ_TYPE_LEVEL_LOW>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&cs35l41_spk_irq &cs35l41_reset>;
++		reset-gpios = <&tlmm 114 GPIO_ACTIVE_HIGH>;
++		cirrus,boost-type = <0>;
++		cirrus,boost-peak-milliamp = <4000>;
++		cirrus,boost-ind-nanohenry = <1000>;
++		cirrus,boost-cap-microfarad = <15>;
++		cirrus,asp-sdout-hiz = <1>;
++		cirrus,gpio2-src-select = <4>;
++		cirrus,gpio2-output-enable;
++		sound-name-prefix = "RCV";
++		VA-supply = <&vreg_s4a_1p8>;
++		VP-supply = <&vph_pwr>;
++		#sound-dai-cells = <1>;
++	};
++
++	cs35l41_rcv: speaker-amp@42 {
++		compatible = "cirrus,cs35l41";
++		status = "okay";
++		reg = <0x42>;
++		interrupt-parent = <&tlmm>;
++		interrupts = <112 IRQ_TYPE_LEVEL_LOW>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&cs35l41_rcv_irq>;
++		reset-gpios = <&tlmm 114 GPIO_ACTIVE_HIGH>;
++		cirrus,boost-type = <0>;
++		cirrus,boost-peak-milliamp = <4000>;
++		cirrus,boost-ind-nanohenry = <1000>;
++		cirrus,boost-cap-microfarad = <15>;
++		cirrus,asp-sdout-hiz = <1>;
++		cirrus,gpio2-src-select = <4>;
++		cirrus,gpio2-output-enable;
++		sound-name-prefix = "LCV";
++		VA-supply = <&vreg_s4a_1p8>;
++		VP-supply = <&vph_pwr>;
++		#sound-dai-cells = <1>;
++	};
++};
++
++&txmacro {
++	status = "okay";
++};
++
++&rxmacro {
++	status = "okay";
++};
++
++/* VA macro 负责数字麦采集（VA Capture 那条 link） */
++&vamacro {
++	pinctrl-names = "default";
++	pinctrl-0 = <&dmic01_active>;
++	vdd-micb-supply = <&vreg_s4a_1p8>;
++	qcom,dmic-sample-rate = <600000>;
++};
++
++/* mi2s2 的 pinmux：TDM 用 sck/data0/ws/data1（gpio133/134/135/137） */
++&tert_mi2s_active {
++	/delete-node/ data0-pins;
++
++	ws-pins {
++		/delete-property/ output-high;
++	};
++
++	data1-pins {
++		pins = "gpio137";
++		function = "mi2s2_data1";
++		drive-strength = <8>;
++		bias-disable;
++	};
++};
++
++&tlmm {
++	umi_wcd_reset_default: wcd938x-reset-default-state {
++		pins = "gpio32";
++		function = "gpio";
++		drive-strength = <16>;
++		output-high;
++	};
++
++	umi_wcd_reset_sleep: wcd938x-reset-sleep-state {
++		pins = "gpio32";
++		function = "gpio";
++		drive-strength = <16>;
++		bias-disable;
++		output-low;
++	};
++
++	cs35l41_rcv_irq: cs35l41-irq {
++		pins = "gpio112";
++		function = "gpio";
++		drive-strength = <8>;
++		bias-pull-up;
++		input-enable;
++	};
++
++	cs35l41_spk_irq: cs35l41-spk-irq {
++		pins = "gpio113";
++		function = "gpio";
++		drive-strength = <8>;
++		bias-pull-up;
++		input-enable;
++	};
++
++	cs35l41_reset: cs35l41-reset {
++		pins = "gpio114";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
++	tert_tdm_active: tert-tdm-active-state {
++		sck-pins {
++			pins = "gpio133";
++			function = "mi2s2_sck";
++			drive-strength = <8>;
++			bias-disable;
++			output-high;
++		};
++
++		din-pins {
++			pins = "gpio134";
++			function = "mi2s2_data0";
++			drive-strength = <8>;
++			bias-disable;
++		};
++
++		ws-pins {
++			pins = "gpio135";
++			function = "mi2s2_ws";
++			drive-strength = <8>;
++			bias-disable;
++			output-high;
++		};
++
++		dout-pins {
++			pins = "gpio137";
++			function = "mi2s2_data1";
++			drive-strength = <8>;
++			bias-disable;
++		};
++	};
++};
++
+diff --git a/arch/arm64/boot/dts/qcom/umi-dtbo-stubs.dtsi b/arch/arm64/boot/dts/qcom/umi-dtbo-stubs.dtsi
+new file mode 100644
+index 000000000..1ead82473
+--- /dev/null
++++ b/arch/arm64/boot/dts/qcom/umi-dtbo-stubs.dtsi
+@@ -0,0 +1,247 @@
++// SPDX-License-Identifier: BSD-3-Clause
++/*
++ * umi-dtbo-stubs.dtsi — 自动生成，别手改（重新生成见 scripts/gen-dtbo-stubs.py）
++ *
++ * 为什么需要这个：
++ *   这台机器的 ABL 在跳转前会把 dtbo 分区里的 29 个 overlay 打到 boot.img 的
++ *   base DTB 上。每个 overlay 用 &label 指定目标节点（libfdt 按 __symbols__ 解析），
++ *   overlay 打不上 ABL 就静默退回 fastboot —— 现象是 Booting OKAY 之后什么都不说。
++ *   原厂 base DTB 有 1672 个 label，overlay 要的 241 个全都在；
++ *   主线 DTB 只有 577 个，且命名体系不同（uart12 / ufs_mem_hc / usb_1 …）。
++ *
++ *   所以这里给 overlay 要的每个 label 建一个空的占位节点：
++ *   overlay 就有了能打上去的目标，而被它写进去的下游属性落在占位节点上，
++ *   对主线内核毫无影响（没有 compatible，也没有驱动会绑定）。
++ */
++
++/ {
++	dtbo_stubs: dtbo-stubs {
++		#address-cells = <1>;
++		#size-cells = <0>;
++		/* 没有 compatible：确保 of_platform_populate 不会给它们建设备 */
++		BOB: stub-0 { reg = <0>; };
++		L10A: stub-1 { reg = <1>; };
++		L10C: stub-2 { reg = <2>; };
++		L11C: stub-3 { reg = <3>; };
++		L13A: stub-4 { reg = <4>; };
++		L14A: stub-5 { reg = <5>; };
++		L1C: stub-6 { reg = <6>; };
++		L2C: stub-7 { reg = <7>; };
++		L3C: stub-8 { reg = <8>; };
++		L4C: stub-9 { reg = <9>; };
++		L5C: stub-10 { reg = <10>; };
++		L7A: stub-11 { reg = <11>; };
++		L7C: stub-12 { reg = <12>; };
++		L8C: stub-13 { reg = <13>; };
++		S4A: stub-14 { reg = <14>; };
++		S5A: stub-15 { reg = <15>; };
++		S8C: stub-16 { reg = <16>; };
++		arch_timer: stub-17 { reg = <17>; };
++		audio_apr: stub-18 { reg = <18>; };
++		aw8697_gpio_int: stub-19 { reg = <19>; };
++		aw8697_gpio_reset: stub-20 { reg = <20>; };
++		aw8697_gpio_reset_output_high: stub-21 { reg = <21>; };
++		bolero: stub-22 { reg = <22>; };
++		bt_en_sleep: stub-23 { reg = <23>; };
++		cam_cci0: stub-24 { reg = <24>; };
++		cam_cci1: stub-25 { reg = <25>; };
++		cam_sensor_active_3: stub-26 { reg = <26>; };
++		cam_sensor_active_6dofleft: stub-27 { reg = <27>; };
++		cam_sensor_active_6dofright: stub-28 { reg = <28>; };
++		cam_sensor_active_rear: stub-29 { reg = <29>; };
++		cam_sensor_active_rear_aux: stub-30 { reg = <30>; };
++		cam_sensor_active_rgbleft: stub-31 { reg = <31>; };
++		cam_sensor_active_rst2: stub-32 { reg = <32>; };
++		cam_sensor_mclk0_active: stub-33 { reg = <33>; };
++		cam_sensor_mclk0_suspend: stub-34 { reg = <34>; };
++		cam_sensor_mclk1_active: stub-35 { reg = <35>; };
++		cam_sensor_mclk1_suspend: stub-36 { reg = <36>; };
++		cam_sensor_mclk2_active: stub-37 { reg = <37>; };
++		cam_sensor_mclk2_suspend: stub-38 { reg = <38>; };
++		cam_sensor_mclk3_active: stub-39 { reg = <39>; };
++		cam_sensor_mclk3_suspend: stub-40 { reg = <40>; };
++		cam_sensor_mclk4_active: stub-41 { reg = <41>; };
++		cam_sensor_mclk4_suspend: stub-42 { reg = <42>; };
++		cam_sensor_mclk5_active: stub-43 { reg = <43>; };
++		cam_sensor_mclk5_suspend: stub-44 { reg = <44>; };
++		cam_sensor_mclk6_active: stub-45 { reg = <45>; };
++		cam_sensor_mclk6_suspend: stub-46 { reg = <46>; };
++		cam_sensor_suspend_3: stub-47 { reg = <47>; };
++		cam_sensor_suspend_6dofleft: stub-48 { reg = <48>; };
++		cam_sensor_suspend_6dofright: stub-49 { reg = <49>; };
++		cam_sensor_suspend_rear: stub-50 { reg = <50>; };
++		cam_sensor_suspend_rear_aux: stub-51 { reg = <51>; };
++		cam_sensor_suspend_rgbleft: stub-52 { reg = <52>; };
++		cam_sensor_suspend_rst2: stub-53 { reg = <53>; };
++		cci0_active: stub-54 { reg = <54>; };
++		cci1_active: stub-55 { reg = <55>; };
++		cci3_active: stub-56 { reg = <56>; };
++		clock_camcc: stub-57 { reg = <57>; };
++		clock_rpmh: stub-58 { reg = <58>; };
++		cpu4_isolate: stub-59 { reg = <59>; };
++		cpu5_isolate: stub-60 { reg = <60>; };
++		cpu6_isolate: stub-61 { reg = <61>; };
++		cpu7_isolate: stub-62 { reg = <62>; };
++		cs35l41_int_speaker: stub-63 { reg = <63>; };
++		cs35l41_int_speaker_rcv: stub-64 { reg = <64>; };
++		dai_mi2s0: stub-65 { reg = <65>; };
++		dai_mi2s2: stub-66 { reg = <66>; };
++		disp_rdump_memory: stub-67 { reg = <67>; };
++		eud: stub-68 { reg = <68>; };
++		firmware: stub-69 { reg = <69>; };
++		fsa4480: stub-70 { reg = <70>; };
++		ipa_hw: stub-71 { reg = <71>; };
++		kona_snd: stub-72 { reg = <72>; };
++		lpass_audio_hw_vote: stub-73 { reg = <73>; };
++		lpass_core_hw_vote: stub-74 { reg = <74>; };
++		lt9611_pins: stub-75 { reg = <75>; };
++		maxim_ds28e16: stub-76 { reg = <76>; };
++		mdm0: stub-77 { reg = <77>; };
++		mdss_dsi0_pll: stub-78 { reg = <78>; };
++		mdss_dsi1_pll: stub-79 { reg = <79>; };
++		mdss_dsi_phy0: stub-80 { reg = <80>; };
++		mdss_dsi_phy1: stub-81 { reg = <81>; };
++		memtimer: stub-82 { reg = <82>; };
++		mhi_0: stub-83 { reg = <83>; };
++		modem_mmw_skin0: stub-84 { reg = <84>; };
++		modem_mmw_skin1: stub-85 { reg = <85>; };
++		modem_mmw_skin2: stub-86 { reg = <86>; };
++		modem_skin: stub-87 { reg = <87>; };
++		msm_gpu: stub-88 { reg = <88>; };
++		nfc_clk_req_active: stub-89 { reg = <89>; };
++		nfc_clk_req_suspend: stub-90 { reg = <90>; };
++		nfc_enable_active: stub-91 { reg = <91>; };
++		nfc_enable_suspend: stub-92 { reg = <92>; };
++		nfc_int_active: stub-93 { reg = <93>; };
++		nfc_int_suspend: stub-94 { reg = <94>; };
++		pcie1_msi: stub-95 { reg = <95>; };
++		pcie2_rp: stub-96 { reg = <96>; };
++		pm8009_l1: stub-97 { reg = <97>; };
++		pm8009_l2: stub-98 { reg = <98>; };
++		pm8009_l3: stub-99 { reg = <99>; };
++		pm8009_l4: stub-100 { reg = <100>; };
++		pm8009_l5: stub-101 { reg = <101>; };
++		pm8009_l6: stub-102 { reg = <102>; };
++		pm8009_l7: stub-103 { reg = <103>; };
++		pm8009_s2: stub-104 { reg = <104>; };
++		pm8150_l10: stub-105 { reg = <105>; };
++		pm8150_l13: stub-106 { reg = <106>; };
++		pm8150_l14: stub-107 { reg = <107>; };
++		pm8150_l16: stub-108 { reg = <108>; };
++		pm8150_l17: stub-109 { reg = <109>; };
++		pm8150_l2: stub-110 { reg = <110>; };
++		pm8150_l5: stub-111 { reg = <111>; };
++		pm8150_l6: stub-112 { reg = <112>; };
++		pm8150_l7: stub-113 { reg = <113>; };
++		pm8150_l9: stub-114 { reg = <114>; };
++		pm8150_s4: stub-115 { reg = <115>; };
++		pm8150_s5: stub-116 { reg = <116>; };
++		pm8150_s6: stub-117 { reg = <117>; };
++		pm8150a_bob: stub-118 { reg = <118>; };
++		pm8150a_l1: stub-119 { reg = <119>; };
++		pm8150a_l11: stub-120 { reg = <120>; };
++		pm8150a_l2: stub-121 { reg = <121>; };
++		pm8150a_l3: stub-122 { reg = <122>; };
++		pm8150a_l4: stub-123 { reg = <123>; };
++		pm8150a_l5: stub-124 { reg = <124>; };
++		pm8150a_l6: stub-125 { reg = <125>; };
++		pm8150a_l7: stub-126 { reg = <126>; };
++		pm8150a_l8: stub-127 { reg = <127>; };
++		pm8150a_l9: stub-128 { reg = <128>; };
++		pm8150a_s8: stub-129 { reg = <129>; };
++		pmx_ts_release: stub-130 { reg = <130>; };
++		pri_mi2s_sck_active: stub-131 { reg = <131>; };
++		pri_mi2s_sck_sleep: stub-132 { reg = <132>; };
++		pri_mi2s_sd0_active: stub-133 { reg = <133>; };
++		pri_mi2s_sd0_sleep: stub-134 { reg = <134>; };
++		pri_mi2s_sd1_active: stub-135 { reg = <135>; };
++		pri_mi2s_sd1_sleep: stub-136 { reg = <136>; };
++		pri_mi2s_ws_active: stub-137 { reg = <137>; };
++		pri_mi2s_ws_sleep: stub-138 { reg = <138>; };
++		q6core: stub-139 { reg = <139>; };
++		qseecom_mem: stub-140 { reg = <140>; };
++		qupv3_se0_i2c: stub-141 { reg = <141>; };
++		qupv3_se11_i2c: stub-142 { reg = <142>; };
++		qupv3_se12_2uart: stub-143 { reg = <143>; };
++		qupv3_se13_i2c: stub-144 { reg = <144>; };
++		qupv3_se15_i2c: stub-145 { reg = <145>; };
++		qupv3_se16_i2c: stub-146 { reg = <146>; };
++		qupv3_se17_i2c: stub-147 { reg = <147>; };
++		qupv3_se1_i2c: stub-148 { reg = <148>; };
++		qupv3_se2_2uart: stub-149 { reg = <149>; };
++		qupv3_se2_i2c: stub-150 { reg = <150>; };
++		qupv3_se2_spi: stub-151 { reg = <151>; };
++		qupv3_se3_i2c: stub-152 { reg = <152>; };
++		qupv3_se4_spi: stub-153 { reg = <153>; };
++		qupv3_se4_spi_active: stub-154 { reg = <154>; };
++		qupv3_se4_spi_sleep: stub-155 { reg = <155>; };
++		qupv3_se5_4uart: stub-156 { reg = <156>; };
++		qupv3_se6_4uart: stub-157 { reg = <157>; };
++		qupv3_se8_i2c: stub-158 { reg = <158>; };
++		qupv3_se9_i2c: stub-159 { reg = <159>; };
++		reserved_memory: stub-160 { reg = <160>; };
++		sdc2_clk_off: stub-161 { reg = <161>; };
++		sdc2_clk_on: stub-162 { reg = <162>; };
++		sdc2_cmd_off: stub-163 { reg = <163>; };
++		sdc2_cmd_on: stub-164 { reg = <164>; };
++		sdc2_data_off: stub-165 { reg = <165>; };
++		sdc2_data_on: stub-166 { reg = <166>; };
++		sde_dp: stub-167 { reg = <167>; };
++		sde_dp_usbplug_cc_active: stub-168 { reg = <168>; };
++		sde_dp_usbplug_cc_suspend: stub-169 { reg = <169>; };
++		sde_dsi1_active: stub-170 { reg = <170>; };
++		sde_dsi1_suspend: stub-171 { reg = <171>; };
++		sde_dsi_active: stub-172 { reg = <172>; };
++		sde_dsi_suspend: stub-173 { reg = <173>; };
++		sde_rscc: stub-174 { reg = <174>; };
++		sde_te1_active: stub-175 { reg = <175>; };
++		sde_te1_suspend: stub-176 { reg = <176>; };
++		sde_te_active: stub-177 { reg = <177>; };
++		sde_te_suspend: stub-178 { reg = <178>; };
++		spkr_1_sd_n_active: stub-179 { reg = <179>; };
++		spkr_1_sd_n_sleep: stub-180 { reg = <180>; };
++		spkr_2_sd_n_active: stub-181 { reg = <181>; };
++		spkr_2_sd_n_sleep: stub-182 { reg = <182>; };
++		spmi_debug_bus: stub-183 { reg = <183>; };
++		storage_cd: stub-184 { reg = <184>; };
++		stub_codec: stub-185 { reg = <185>; };
++		tdm_tert_rx: stub-186 { reg = <186>; };
++		tdm_tert_tx: stub-187 { reg = <187>; };
++		tert_mi2s_sck_active: stub-188 { reg = <188>; };
++		tert_mi2s_sck_sleep: stub-189 { reg = <189>; };
++		tert_mi2s_sd0_active: stub-190 { reg = <190>; };
++		tert_mi2s_sd0_sleep: stub-191 { reg = <191>; };
++		tert_mi2s_sd1_active: stub-192 { reg = <192>; };
++		tert_mi2s_sd1_sleep: stub-193 { reg = <193>; };
++		tert_mi2s_ws_active: stub-194 { reg = <194>; };
++		tert_mi2s_ws_sleep: stub-195 { reg = <195>; };
++		tert_tdm_clk_active: stub-196 { reg = <196>; };
++		tert_tdm_clk_sleep: stub-197 { reg = <197>; };
++		tert_tdm_din_active: stub-198 { reg = <198>; };
++		tert_tdm_din_sleep: stub-199 { reg = <199>; };
++		tert_tdm_dout_active: stub-200 { reg = <200>; };
++		tert_tdm_dout_sleep: stub-201 { reg = <201>; };
++		tert_tdm_ws_active: stub-202 { reg = <202>; };
++		tert_tdm_ws_sleep: stub-203 { reg = <203>; };
++		thermal_zones: stub-204 { reg = <204>; };
++		titan_top_gdsc: stub-205 { reg = <205>; };
++		ufs_phy_gdsc: stub-206 { reg = <206>; };
++		ufshc_mem: stub-207 { reg = <207>; };
++		ufsphy_mem: stub-208 { reg = <208>; };
++		usb0: stub-209 { reg = <209>; };
++		usb1: stub-210 { reg = <210>; };
++		usb2_id_det_default: stub-211 { reg = <211>; };
++		usb2_phy0: stub-212 { reg = <212>; };
++		usb2_phy1: stub-213 { reg = <213>; };
++		usb_nop_phy: stub-214 { reg = <214>; };
++		usb_qmp_dp_phy: stub-215 { reg = <215>; };
++		usb_qmp_phy: stub-216 { reg = <216>; };
++		va_cdc_dma_0_tx: stub-217 { reg = <217>; };
++		vendor: stub-218 { reg = <218>; };
++		wcd938x_reset_active: stub-219 { reg = <219>; };
++		wcd938x_reset_sleep: stub-220 { reg = <220>; };
++		wdog: stub-221 { reg = <221>; };
++		wil6210: stub-222 { reg = <222>; };
++		wlan: stub-223 { reg = <223>; };
++	};
++};
+diff --git a/arch/arm64/boot/dts/qcom/xiaomi-umi-battery.dtsi b/arch/arm64/boot/dts/qcom/xiaomi-umi-battery.dtsi
+new file mode 100644
+index 000000000..a8ba4964e
+--- /dev/null
++++ b/arch/arm64/boot/dts/qcom/xiaomi-umi-battery.dtsi
+@@ -0,0 +1,154 @@
++// SPDX-License-Identifier: BSD-3-Clause
++/*
++ * 电量计 + 充电（小米 10 / umi）
++ *
++ * 来源：zhaoyuanwang123/armbian 的 sm8250-7.2 补丁序列
++ *   0024 power: supply: Qualcomm PMIC fuel gauge      -> qcom_fg.c
++ *   0025 qcom_fg: pm8150b 支持
++ *   0028/0037/0039/0041 qcom_pm8150b_charger（smb5）  -> qcom_pm8150b_charger.c
++ *   0511 TI bq25970 快充                              -> bq25970_charger.c
++ *   0044 板级 DT 里的 battery / pm8150b_fg / pm8150b_charger / bq25970 节点
++ *
++ * 说明：
++ *   - 电芯参数（4.68Ah / 4.4V）抄他们的 simple-battery，属于「够用」的近似值；
++ *     原厂 BMS 的真实曲线在 mi,mdss…/bms 里，主线没有对应驱动。
++ *   - bq25970（40W 快充，地址 0x66）单独一颗，irq 走 GPIO68；它 probe 失败
++ *     不影响主充电和电量计。
++ *   - pm8150b_charger 需要 IIO 通道 usb_in_v_div_16 / usb_in_i_uv，
++ *     所以 CONFIG_QCOM_SPMI_ADC5 必须是 =y（我们 config 里已经改）。
++ */
++
++#include <dt-bindings/iio/qcom,spmi-vadc.h>
++#include <dt-bindings/interrupt-controller/irq.h>
++
++/ {
++	battery: battery {
++		compatible = "simple-battery";
++		voltage-min-design-microvolt = <3400000>;
++		voltage-max-design-microvolt = <4400000>;
++		charge-full-design-microamp-hours = <4680000>;
++		energy-full-design-microwatt-hours = <18400000>;
++		constant-charge-current-max-microamp = <1500000>;
++	};
++};
++
++&spmi_bus {
++	pmic@2 {
++		/* 电量计：PM8150B 的 gen3 fg，寄存器 0x4000 */
++		pm8150b_fg: fuel-gauge@4000 {
++			compatible = "qcom,pm8150b-fg";
++			reg = <0x4000>;
++			interrupts = <0x2 0x40 0x0 IRQ_TYPE_EDGE_BOTH>;
++			interrupt-names = "soc-delta";
++			monitored-battery = <&battery>;
++			power-supplies = <&pm8150b_charger>;
++			status = "okay";
++		};
++
++		/* 充电器：SMB5（qcom_pm8150b_charger.c 只用到 bat-ov /
++		 * usbin-icl-change / wdog-bark 这三个 IRQ，其余名字留着对齐厂商 DT） */
++		pm8150b_charger: charger@1000 {
++			compatible = "qcom,pm8150b-charger";
++			reg = <0x1000>;
++			interrupts = <0x2 0x13 0x0 IRQ_TYPE_EDGE_BOTH>,
++				     <0x2 0x13 0x1 IRQ_TYPE_EDGE_BOTH>,
++				     <0x2 0x13 0x2 IRQ_TYPE_EDGE_BOTH>,
++				     <0x2 0x13 0x3 IRQ_TYPE_EDGE_BOTH>,
++				     <0x2 0x13 0x4 IRQ_TYPE_EDGE_BOTH>,
++				     <0x2 0x13 0x5 IRQ_TYPE_EDGE_BOTH>,
++				     <0x2 0x13 0x6 IRQ_TYPE_EDGE_BOTH>,
++				     <0x2 0x13 0x7 IRQ_TYPE_EDGE_BOTH>;
++			interrupt-names = "bat-ov",
++					  "usbin-plugin",
++					  "usbin-icl-change",
++					  "wdog-bark",
++					  "usb-plugin",
++					  "usb-icl-change",
++					  "dc-plugin",
++					  "dc-icl-change";
++			io-channels = <&pm8150b_adc ADC5_USB_IN_V_16>,
++				      <&pm8150b_adc ADC5_USB_IN_I>;
++			io-channel-names = "usb_in_v_div_16", "usb_in_i_uv";
++			monitored-battery = <&battery>;
++			status = "okay";
++		};
++	};
++};
++
++/* VBUS：主充电器要能报 vbus 电压/限流 */
++&pm8150b_vbus {
++	regulator-min-microamp = <500000>;
++	regulator-max-microamp = <3000000>;
++	status = "okay";
++};
++
++/* 40W 快充（TI bq25970，@0x66）。irq = GPIO68，下降沿 */
++&i2c15 {
++	status = "okay";
++
++	bq25970: bq25970-standalone@66 {
++		compatible = "ti,bq2597x-standalone";
++		reg = <0x66>;
++		interrupt-parent = <&tlmm>;
++		interrupts = <68 IRQ_TYPE_EDGE_FALLING>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&bq2597x_master_int_default>;
++
++		ti,bq2597x,bat-ovp-alarm-disable;
++		ti,bq2597x,bat-ocp-disable;
++		ti,bq2597x,bat-ocp-alarm-disable;
++		ti,bq2597x,bat-ucp-alarm-disable;
++		ti,bq2597x,bat-ucp-disable;
++		ti,bq2597x,bat-therm-disable;
++		ti,bq2597x,bus-therm-disable;
++		ti,bq2597x,die-therm-disable;
++
++		ti,bq2597x,bat-ovp-threshold = <4450>;
++		ti,bq2597x,bat-ovp-alarm-threshold = <4450>;
++		ti,bq2597x,bus-ovp-threshold = <12000>;
++		ti,bq2597x,bus-ovp-alarm-threshold = <11000>;
++		ti,bq2597x,bus-ocp-threshold = <3750>;
++		ti,bq2597x,bus-ocp-alarm-threshold = <3500>;
++
++		ti,bq2597x,bat-therm-threshold = <0x15>;	/* 4.1% */
++		ti,bq2597x,bus-therm-threshold = <0x15>;	/* 4.1% */
++		ti,bq2597x,die-therm-threshold = <145>;
++		ti,bq2597x,ac-ovp-threshold = <14>;
++
++		status = "okay";
++	};
++};
++
++/*
++ * ADC 通道：主线的 adc5 驱动只注册 **DT 里有 channel@N 子节点** 的通道，
++ * pm8150b.dtsi 自带只有 ref_gnd/1p25vref/die_temp/chg_temp 四个，所以
++ * charger 要的 usb_in_* 必须在这里声明（数值与 pre-scaling 抄下游 DT：
++ * usb_in_i_uv@7 = 1:1，usb_in_v_div_16@8 = 1:16）。
++ */
++&pm8150b_adc {
++	channel@7 {
++		reg = <ADC5_USB_IN_I>;
++		label = "usb_in_i_uv";
++		qcom,pre-scaling = <1 1>;
++		qcom,hw-settle-time = <200>;
++		qcom,avg-samples = <1>;
++	};
++
++	channel@8 {
++		reg = <ADC5_USB_IN_V_16>;
++		label = "usb_in_v_div_16";
++		qcom,pre-scaling = <1 16>;
++		qcom,hw-settle-time = <200>;
++		qcom,avg-samples = <1>;
++	};
++};
++
++&tlmm {
++	bq2597x_master_int_default: bq2597x-master-int-default {
++		pins = "gpio68";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-pull-up;
++		input-enable;
++	};
++};
+diff --git a/arch/arm64/boot/dts/qcom/xiaomi-umi-panels.dtsi b/arch/arm64/boot/dts/qcom/xiaomi-umi-panels.dtsi
+new file mode 100644
+index 000000000..a9232b245
+--- /dev/null
++++ b/arch/arm64/boot/dts/qcom/xiaomi-umi-panels.dtsi
+@@ -0,0 +1,131 @@
++// SPDX-License-Identifier: BSD-3-Clause
++/*
++ * xiaomi-umi-panels.dtsi — 自动生成，别手改
++ *   生成: python tools/gen-panel-dts.py dump/panels \
++ *             -o dts/xiaomi-umi-panels.dtsi --enable qcom,mdss_dsi_j2_mp_42_02_0b_dsc_cmd
++ *
++ * 数据全部来自设备自己的下游 DTB。驱动只认 "xiaomi,umi-panel"，
++ * 时序 / init 序列 / DSC 参数都从 DT 读 —— 换屏只改 --enable，不用改驱动。
++ *
++ * ★ 面板节点必须是 &mdss_dsi0 的子节点（reg = <0> 选虚拟通道 0），
++ *   否则 mipi_dsi 不会为它创建 mipi_dsi_device，驱动根本不会 probe。
++ * ★ 22 个变体不要同时塞进来：同一父节点下只能有一个 panel@0。
++ *   换屏 = 重新跑一次生成器 + dtb-only.sh（1 分钟，不用重编内核）。
++ */
++
++&mdss_dsi0 {
++	umi-panel@0 {
++		compatible = "xiaomi,umi-panel";
++		reg = <0>;
++		status = "okay";
++		/* xiaomi,no-init; */
++		xiaomi,panel-type = "dsi_cmd_mode";
++		xiaomi,bpp = <0x18>;
++		xiaomi,dsi-ctrl = <0x00>;
++		xiaomi,dsi-phy = <0x00>;
++		xiaomi,traffic-mode = "burst_mode";
++		xiaomi,lane-map = "lane_map_0123";
++		xiaomi,reset-sequence = <0x01 0x01 0x00 0x01 0x01 0x0a>;
++		xiaomi,physical-width-mm = <0x2c6>;
++		xiaomi,physical-height-mm = <0x601>;
++		xiaomi,te-pin-select = <0x01>;
++		xiaomi,wr-mem-start = <0x2c>;
++		xiaomi,wr-mem-continue = <0x3c>;
++		xiaomi,te-dcs-command = <0x01>;
++		xiaomi,panel-id = <0x4a32 0x420201>;
++		xiaomi,bl-type = "bl_ctrl_dcs";
++		xiaomi,bl-min = <0x01>;
++		xiaomi,bl-max = <0x7ff>;
++		/*
++		 * 90 Hz（厂商原生时序）。以前这里写 0x3c(60) 并配 600/32/560 的
++		 * 巨大 vblank，实测「触控不跟手」的主因之一就在这：面板被 ABL
++		 * 留在 90 Hz 自刷新（tlmm 50 = 1），而 DSI 按 60 Hz 推帧，帧会被
++		 * 面板多保持半帧到一帧，滑动看起来就慢半拍。
++		 * 厂商时序：H 16/8/8, V 4/4/8 -> 1112x2356@90，像素时钟不变
++		 * (235.8 MHz)，所以 DSI 位率不用动。
++		 */
++		xiaomi,framerate = <0x5a>;
++		/* 面板刷新率选择脚，ABL 已拉高(=90 Hz)，这里只做记录 */
++		disprate-gpios = <&tlmm 50 0>;
++		xiaomi,panel-width = <0x438>;
++		xiaomi,panel-height = <0x924>;
++		xiaomi,h-front-porch = <0x10>;
++		xiaomi,h-back-porch = <0x08>;
++		xiaomi,h-pulse-width = <0x08>;
++		xiaomi,h-sync-skew = <0x00>;
++		xiaomi,v-back-porch = <0x08>;
++		xiaomi,v-front-porch = <0x04>;
++		xiaomi,v-pulse-width = <0x04>;
++		xiaomi,clockrate = <0x28a67e80>;
++		xiaomi,on-seq = /bits/ 8 <0x39 0x01 0x00 0x00 0x00 0x00 0x06 0xf0 0x55 0xaa 0x52 0x08 0x07 0x15 0x01 0x00
++			0x00 0x00 0x00 0x02 0xc0 0x10 0x39 0x01 0x00 0x00 0x00 0x00 0x06 0xf0 0x55 0xaa
++			0x52 0x08 0x03 0x15 0x01 0x00 0x00 0x00 0x00 0x02 0xd4 0x00 0x39 0x01 0x00 0x00
++			0x00 0x00 0x06 0xf0 0x55 0xaa 0x52 0x08 0x00 0x15 0x01 0x00 0x00 0x00 0x00 0x02
++			0x6f 0x01 0x15 0x01 0x00 0x00 0x00 0x00 0x02 0xb5 0x00 0x15 0x00 0x00 0x00 0x00
++			0x00 0x02 0x6f 0x01 0x15 0x00 0x00 0x00 0x00 0x00 0x02 0xc0 0x33 0x39 0x01 0x00
++			0x00 0x00 0x00 0x05 0xb2 0x58 0x00 0x08 0x08 0x15 0x00 0x00 0x00 0x00 0x00 0x02
++			0x6f 0x01 0x15 0x00 0x00 0x00 0x00 0x00 0x02 0xca 0x30 0x15 0x01 0x00 0x00 0x00
++			0x00 0x02 0xb5 0x80 0x15 0x00 0x00 0x00 0x00 0x00 0x02 0x6f 0x01 0x15 0x01 0x00
++			0x00 0x00 0x00 0x02 0xc6 0x13 0x39 0x01 0x00 0x00 0x00 0x00 0x06 0xf0 0x55 0xaa
++			0x52 0x08 0x01 0x15 0x00 0x00 0x00 0x00 0x00 0x02 0x6f 0x01 0x39 0x01 0x00 0x00
++			0x00 0x00 0x07 0xd2 0x00 0x12 0x61 0x25 0x43 0x07 0x39 0x01 0x00 0x00 0x00 0x00
++			0x07 0xb7 0x1e 0x1e 0x1e 0x1e 0x1e 0x1e 0x39 0x01 0x00 0x00 0x00 0x00 0x05 0xb8
++			0x48 0x48 0x48 0x48 0x15 0x00 0x00 0x00 0x00 0x00 0x02 0x6f 0x01 0x15 0x00 0x00
++			0x00 0x00 0x00 0x02 0xb3 0x13 0x15 0x00 0x00 0x00 0x00 0x00 0x02 0x6f 0x01 0x15
++			0x01 0x00 0x00 0x00 0x00 0x02 0xb4 0x13 0x39 0x01 0x00 0x00 0x00 0x00 0x03 0xcd
++			0x05 0x61 0x39 0x01 0x00 0x00 0x00 0x00 0x06 0xf0 0x55 0xaa 0x52 0x08 0x05 0x39
++			0x01 0x00 0x00 0x00 0x00 0x03 0xb3 0x88 0x80 0x39 0x01 0x00 0x00 0x00 0x00 0x03
++			0xb5 0x04 0x01 0x39 0x01 0x00 0x00 0x00 0x00 0x05 0xb7 0x04 0x00 0x00 0x01 0x39
++			0x01 0x00 0x00 0x00 0x00 0x05 0xb8 0x04 0x00 0x00 0x01 0x39 0x01 0x00 0x00 0x00
++			0x00 0x05 0xff 0xaa 0x55 0xa5 0x81 0x15 0x00 0x00 0x00 0x00 0x00 0x02 0x6f 0x0d
++			0x15 0x00 0x00 0x00 0x00 0x00 0x02 0xf3 0xab 0x15 0x00 0x00 0x00 0x00 0x00 0x02
++			0x6f 0x05 0x39 0x01 0x00 0x00 0x00 0x00 0x03 0xfd 0x00 0xda 0x39 0x01 0x00 0x00
++			0x00 0x00 0x05 0xff 0xaa 0x55 0xa5 0x80 0x15 0x00 0x00 0x00 0x00 0x00 0x02 0x6f
++			0x0a 0x15 0x01 0x00 0x00 0x00 0x00 0x02 0xfc 0x02 0x15 0x01 0x00 0x00 0x00 0x00
++			0x02 0x6f 0x36 0x15 0x01 0x00 0x00 0x00 0x00 0x02 0xf6 0x42 0x39 0x01 0x00 0x00
++			0x00 0x00 0x06 0xf0 0x55 0xaa 0x52 0x00 0x00 0x39 0x01 0x00 0x00 0x00 0x00 0x05
++			0x3b 0x00 0x0c 0x00 0x04 0x15 0x01 0x00 0x00 0x00 0x00 0x02 0x90 0x01 0x39 0x01
++			0x00 0x00 0x00 0x00 0x13 0x93 0x89 0x28 0x00 0x0c 0x02 0x00 0x02 0x0e 0x01 0x1f
++			0x00 0x07 0x08 0xbb 0x08 0x7a 0x10 0xf0 0x15 0x01 0x00 0x00 0x00 0x00 0x02 0x03
++			0x11 0x05 0x01 0x00 0x00 0x00 0x00 0x02 0x2c 0x00 0x15 0x01 0x00 0x00 0x00 0x00
++			0x02 0x35 0x00 0x15 0x01 0x00 0x00 0x00 0x00 0x02 0x53 0x20 0x39 0x01 0x00 0x00
++			0x00 0x00 0x05 0x51 0x00 0x00 0x00 0x00 0x39 0x01 0x00 0x00 0x00 0x00 0x05 0x2a
++			0x00 0x00 0x04 0x37 0x39 0x01 0x00 0x00 0x00 0x00 0x05 0x2b 0x00 0x00 0x09 0x23
++			0x39 0x01 0x00 0x00 0x00 0x00 0x06 0xf0 0x55 0xaa 0x52 0x08 0x00 0x39 0x01 0x00
++			0x00 0x00 0x00 0x1e 0xb4 0xcb 0xbb 0xbb 0xaa 0x99 0x77 0x66 0x00 0x00 0x00 0xb4
++			0xd0 0xd0 0xd0 0xd0 0xd0 0x86 0x86 0x3c 0x3c 0xf2 0xf2 0xa8 0xa8 0x36 0x36 0x36
++			0x36 0x0a 0x15 0x01 0x00 0x00 0x00 0x00 0x02 0x2f 0x01 0x15 0x01 0x00 0x00 0x00
++			0x00 0x02 0x26 0x01 0x05 0x01 0x00 0x00 0x64 0x00 0x02 0x11 0x00 0x05 0x01 0x00
++			0x00 0x00 0x00 0x02 0x29 0x00 0x39 0x01 0x00 0x00 0x00 0x00 0x06 0xf0 0x55 0xaa
++			0x52 0x08 0x00 0x15 0x01 0x00 0x00 0x00 0x00 0x02 0xb5 0x84>;
++		xiaomi,off-seq = /bits/ 8 <0x05 0x01 0x00 0x00 0x00 0x00 0x02 0x28 0x00 0x05 0x01 0x00 0x00 0x78 0x00 0x02
++			0x10 0x00>;
++		xiaomi,compression = "dsc";
++		xiaomi,dsc-version = <0x11>;
++		xiaomi,dsc-slice-height = <0x0c>;
++		xiaomi,dsc-slice-width = <0x21c>;
++		xiaomi,dsc-slice-per-pkt = <0x02>;
++		xiaomi,dsc-bpc = <0x08>;
++		xiaomi,dsc-bpp = <0x08>;
++		xiaomi,dsc-block-prediction;
++		xiaomi,phy-timings = [00 18 06 06 21 20 06 06 04 02 04 00 15 16];
++
++		ports {
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			port@0 {
++				reg = <0>;
++
++				umi_panel_in: endpoint {
++					remote-endpoint = <&mdss_dsi0_out>;
++				};
++			};
++		};
++	};
++};
++
++&mdss_dsi0_out {
++	data-lanes = <0 1 2 3>;	/* 下游 lane-0..3-state 全开 => 4 lane DPHY */
++	remote-endpoint = <&umi_panel_in>;
++};

@@ -1,0 +1,82 @@
+# Boots the Xiaomi Mi 10's SDX55M modem on mainline and starts mobile data
+# (fallback route when Wi-Fi is off). Same sources as umi-modem in the Nura
+# port; see docs/modem.md there for how it works.
+#
+# Paths stay as in the port: the scripts call /usr/sbin/..., which is
+# /usr/bin on Arch, and keep their helpers in /usr/libexec/umi-modem.
+
+pkgname=umi-modem
+pkgver=0.1
+pkgrel=1
+pkgdesc="Xiaomi Mi 10: boot the SDX55M modem (Sahara image server, EFS syncs kept in RAM)"
+arch=(aarch64)
+url="https://github.com/miercolesvd/mi10-arch-linux"
+license=(GPL-2.0-only BSD-3-Clause)
+depends=(iproute2 kmod msm-firmware-loader qrtr)
+source=(
+  mi10-mdm.c
+  mi10-qmi.c
+  umi-modem-start
+  umi-modem-data
+  umi-modem-data-up
+  umi-modem.service
+  umi-modem.conf
+  umi-tqftpserv.service
+  umi-modem-data.service
+  tqftpserv-version.diff
+  tqftpserv-tqftpserv.c
+  tqftpserv-translate.c
+  tqftpserv-translate.h
+  tqftpserv-list.h
+  tqftpserv-xz-decompress.h
+  tqftpserv-zstd-decompress.h
+  tqftpserv-LICENSE
+)
+sha256sums=(
+  'e69a804b866247a1b7511d6ae15dd96bd40771f4b9cdc794c5fca44fce32202d'
+  'bdea505b6857cbadeab7398c359be129120bd51d389b33b482d663fcb1a3ce69'
+  'ba5f140ae9e95cee3c85a83008e5d2331387f63ca818066e3a79635152db482f'
+  '5a06ec906fe683f09a44e38c3ad4a566360f3736d8bafcc1b4c06c0bf40a0b5e'
+  '33cc11472618258b4e4f66e430505a60a10171300662a9109f77f29ce7733341'
+  '9857487467868bab5d0dba23f80b7636b623f28c54059db1a0401c19b6d6ef9f'
+  '752d370d4ce105e6288f9b833ef25c91b1f9aa5caefd807f2b1065a753cd301f'
+  '1d25515b2bc2a924b568f514bca35792695037d0e465f1da464a9e2d3b38cf09'
+  '280f21d4feb62aa7039306f551e692965087ba51e71bb7aaf30768e5b9390d7b'
+  '389e6488549642024dab658006cecdaa363012084bf79c7f53e374da4b2f508e'
+  'b980c9d7ba3e67ac353b279d85e8bad9de6836d3887454a87d674001184b96ca'
+  'aefa6e5e8afc0179ebbd1203910126995e2d4e257080fbaf223f882c067fc7ab'
+  '4821e49634a6189edcb0a92c61369a364bfc587d63f122c181d2eb5b4858f581'
+  'f0afe5bf28c874840f7cc2266804277f300761d39e6a535da86206eb88ba0667'
+  'a1fb85762e019ff55fe8e76c64cfef83405a27ed6226d782eb8525d6a258ced7'
+  'c88071f64ed1276f5e11051a6af01a3983af0ff4704860fe5e03729e924a7405'
+  'a6d7cc7891d16f9c74c9a9c2514805e59bb8758db7690bb7ae065c79cec9515a'
+)
+
+prepare() {
+  # linux-msm/tqftpserv at eb4b9a04 (BSD-3-Clause) with the -v option: this
+  # modem finds no TFTP server published as version 1 only. Built without
+  # xz/zstd: the modem's files are plain.
+  mkdir -p tqftpserv
+  local f
+  for f in tqftpserv.c translate.c translate.h list.h xz-decompress.h zstd-decompress.h; do
+    cp "tqftpserv-$f" "tqftpserv/$f"
+  done
+  patch -d tqftpserv -p1 < tqftpserv-version.diff
+}
+
+build() {
+  gcc $CFLAGS -Wall -Wextra -pthread -o mi10-mdm mi10-mdm.c $LDFLAGS
+  gcc $CFLAGS -Wall -Wextra -o mi10-qmi mi10-qmi.c $LDFLAGS
+  gcc $CFLAGS -Wall -o tqftpserv/tqftpserv \
+    tqftpserv/tqftpserv.c tqftpserv/translate.c $LDFLAGS -lqrtr
+}
+
+package() {
+  install -Dm755 -t "$pkgdir/usr/bin" mi10-mdm mi10-qmi umi-modem-data
+  install -Dm755 -t "$pkgdir/usr/libexec/umi-modem" \
+    umi-modem-start umi-modem-data-up tqftpserv/tqftpserv
+  install -Dm644 -t "$pkgdir/usr/lib/systemd/system" \
+    umi-modem.service umi-tqftpserv.service umi-modem-data.service
+  install -Dm644 umi-modem.conf "$pkgdir/usr/lib/modprobe.d/umi-modem.conf"
+  install -Dm644 tqftpserv-LICENSE "$pkgdir/usr/share/licenses/$pkgname/tqftpserv-LICENSE"
+}

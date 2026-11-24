@@ -1,0 +1,40 @@
+#!/bin/sh
+# Xiaomi Mi 10: USB network link to a PC (NCM gadget, interface usb0).
+# NetworkManager gives the phone 172.16.42.1 on it and hands the PC an
+# address by DHCP, so "ssh user@172.16.42.1" works from the PC.
+#
+# Run at boot by umi-usb-gadget.service, and by udev each time the gadget
+# side of the dual-role USB controller comes back (after a hub or dock was
+# unplugged). Safe to run repeatedly.
+
+G=/sys/kernel/config/usb_gadget/umi
+
+log() {
+	echo "umi-usb-gadget: $*" >&2
+}
+
+mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config || exit 1
+
+if [ ! -d "$G" ]; then
+	mkdir "$G" || exit 1
+	echo 0x18d1 > "$G/idVendor"   # same IDs as Nura's USB network gadget
+	echo 0xd001 > "$G/idProduct"
+	mkdir -p "$G/strings/0x409"
+	echo "Xiaomi" > "$G/strings/0x409/manufacturer"
+	echo "Mi 10 (Arch Linux ARM)" > "$G/strings/0x409/product"
+	head -c 16 /etc/machine-id > "$G/strings/0x409/serialnumber" 2>/dev/null
+	mkdir -p "$G/functions/ncm.usb0" "$G/configs/c.1/strings/0x409"
+	echo "USB network" > "$G/configs/c.1/strings/0x409/configuration"
+	ln -s "$G/functions/ncm.usb0" "$G/configs/c.1/"
+	log "created the NCM gadget"
+fi
+
+# Already attached?
+[ -n "$(cat "$G/UDC" 2>/dev/null)" ] && exit 0
+
+udc=$(ls /sys/class/udc 2>/dev/null | head -n1)
+if [ -z "$udc" ]; then
+	log "no USB device controller right now (host mode?); will attach when it appears"
+	exit 0
+fi
+echo "$udc" > "$G/UDC" && log "attached to $udc"

@@ -54,9 +54,10 @@ jobs:
         env:
           PASSWORD: ${{ secrets.UMI_PASSWORD || '147147' }}
         run: |
+          set -o pipefail
           sudo --preserve-env=PASSWORD \
             KERNEL_PKG_DIR="$PWD/kernel-pkg" \
-            build/build-image.sh "$PWD/out"
+            build/build-image.sh "$PWD/out" 2>&1 | tee build.log
 
       - name: Compress the system image
         run: |
@@ -85,3 +86,14 @@ jobs:
           gh release create "$tag" --target "${{ github.sha }}" \
             --title "Mi 10 Arch Linux ARM (KDE Plasma) $tag" --notes-file notes.md \
             out/boot.img out/mi10-arch.img.zst.part* out/SHA256SUMS out/packages.txt
+
+      # Make the end of the log readable from the run's annotations (and the
+      # checks API) without opening the full log
+      - name: Show the end of the log
+        if: failure()
+        run: |
+          [ -f build.log ] || exit 0
+          grep -E '^=== ' build.log | tail -n 3 | sed 's/^/::notice title=Last stages::/'
+          tail -n 60 build.log | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}' > tail.txt
+          echo "::error title=Build log (last 60 lines)::$(cat tail.txt)"
+

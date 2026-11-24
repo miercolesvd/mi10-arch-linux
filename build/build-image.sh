@@ -37,6 +37,20 @@ step() { echo; echo "=== $(date -u +%H:%M:%S) $*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
 inroot() { arch-chroot "$ROOT" "$@"; }
 
+# Arch Linux ARM's mirror redirector sometimes sends a download to a mirror
+# that does not have the package yet (404). Refresh the databases, which
+# usually lands on another mirror, and try again.
+pac() {
+	local i
+	for i in 1 2 3; do
+		inroot pacman "$@" && return 0
+		echo "pacman failed (attempt $i of 3); refreshing the databases and retrying in 20 s"
+		sleep 20
+		inroot pacman -Syy --noconfirm || true
+	done
+	die "pacman $* failed 3 times"
+}
+
 [ "$(id -u)" = 0 ] || die "run as root"
 [ "$(uname -m)" = aarch64 ] || die "run on an arm64 machine (this is $(uname -m))"
 for tool in arch-chroot bsdtar curl gpgv mkfs.ext4 rsync img2simg; do
@@ -75,7 +89,7 @@ sed -i -e 's/^#\?ParallelDownloads.*/ParallelDownloads = 8/' \
 	-e '/^\[options\]/a DisableSandbox' "$ROOT/etc/pacman.conf"
 inroot pacman-key --init
 inroot pacman-key --populate archlinuxarm
-inroot pacman -Syu --noconfirm
+pac -Syu --noconfirm
 
 step "Removing the generic Arch Linux ARM kernel"
 inroot pacman -Rns --noconfirm linux-aarch64 || true
@@ -89,7 +103,7 @@ missing=$(inroot sh -c 'for p; do pacman -Si "$p" >/dev/null 2>&1 || echo "$p"; 
 echo "${#PACKAGES[@]} packages found"
 
 step "Installing build tools"
-inroot pacman -S --needed --noconfirm base-devel bc clang cpio libelf lld llvm meson pahole python
+pac -S --needed --noconfirm base-devel bc clang cpio libelf lld llvm meson pahole python
 inroot useradd -m builder 2>/dev/null || true
 rm -rf "$ROOT/build"
 mkdir -p "$ROOT/build/out"
@@ -104,7 +118,7 @@ build_pkg() {
 }
 
 build_pkg qrtr
-inroot sh -c 'pacman -U --noconfirm /build/out/qrtr-*.pkg.tar.*'
+pac -U --noconfirm "$(cd "$ROOT" && ls build/out/qrtr-*.pkg.tar.* | sed 's|^|/|')"
 build_pkg umi-modem
 build_pkg msm-firmware-loader
 build_pkg umi-firmware
@@ -127,10 +141,11 @@ fi
 ls -la "$ROOT/build/out"
 
 step "Installing KDE Plasma and the desktop packages"
-inroot pacman -S --needed --noconfirm "${PACKAGES[@]}"
+pac -S --needed --noconfirm "${PACKAGES[@]}"
 
 step "Installing the Mi 10 packages (builds boot.img through the pacman hook)"
-inroot sh -c 'pacman -U --noconfirm /build/out/*.pkg.tar.*'
+mapfile -t LOCAL_PKGS < <(cd "$ROOT" && ls build/out/*.pkg.tar.* | sed 's|^|/|')
+pac -U --noconfirm "${LOCAL_PKGS[@]}"
 [ -s "$ROOT/boot/boot.img" ] || die "no /boot/boot.img: the boot image hook failed"
 
 step "Configuring the system"

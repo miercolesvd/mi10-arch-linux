@@ -13,15 +13,17 @@ Linux ARM.
 
 ## Status
 
-**Not booted on the phone yet.** The hardware support is the Nura port's,
-where these work: display (60/90 Hz), touch, GPU (OpenGL 4.6, Vulkan 1.3),
-Wi-Fi, Bluetooth, both loudspeakers, internal microphones, modem with mobile
-data, battery and charging.
+**Boots and runs KDE Plasma on the phone** (release build-6, 25 Nov 2026).
+The hardware support is the Nura port's, where these work: display
+(60/90 Hz), touch, GPU (OpenGL 4.6, Vulkan 1.3), Wi-Fi, Bluetooth, both
+loudspeakers, internal microphones, modem with mobile data, battery and
+charging.
 
 | | |
 |---|---|
-| USB-C host mode (hubs, docks, keyboards) | new in this repo (kernel patch 0015), untested |
-| External display over USB-C | **not possible**: the Mi 10 wires only USB 2.0 to the port, no DisplayPort |
+| Plasma desktop on the phone's screen | **works** (25 Nov 2026) |
+| USB-C host mode with a Thunderbolt 4 dock: keyboard, mouse, Ethernet | **works** (kernel patch 0015; 25 Nov 2026) |
+| Monitor on the dock's HDMI/DisplayPort | **not possible**: the Mi 10 wires only USB 2.0 to the port, no DisplayPort |
 | Wired headsets, earpiece for calls, sensors, cameras | not working |
 | Suspend | not tested, so it is turned off (see below) |
 

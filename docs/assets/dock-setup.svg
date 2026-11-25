@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 380" width="780" height="380" role="img" aria-labelledby="t d">
+  <title id="t">Mi 10 on a USB-C dock</title>
+  <desc id="d">The phone connects to a USB-C or Thunderbolt dock with one cable. Keyboard, mouse, Ethernet, USB storage and charging work through the dock. A monitor on the dock's HDMI or DisplayPort output does not, because the phone's port only carries USB 2.0.</desc>
+  <style>
+    text { font-family: -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; fill: #1f2937; }
+    .title { font-size: 15px; font-weight: 600; }
+    .small { font-size: 12.5px; fill: #4b5563; }
+    .item { font-size: 14px; }
+    .box { fill: #ffffff; stroke: #3f51b5; stroke-width: 2; }
+    .line { stroke: #6b7280; stroke-width: 2; fill: none; }
+    .bad { stroke: #c62828; stroke-width: 2; stroke-dasharray: 6 5; fill: none; }
+    .ok { fill: #2e7d32; }
+    .no { fill: #c62828; }
+  </style>
+  <rect x="0" y="0" width="780" height="380" rx="14" fill="#f5f6fa"/>
+
+  <!-- Phone, landscape -->
+  <rect class="box" x="28" y="138" width="210" height="104" rx="16"/>
+  <rect x="44" y="150" width="178" height="80" rx="4" fill="#e8eaf6"/>
+  <rect x="58" y="160" width="150" height="9" rx="2" fill="#9fa8da"/>
+  <rect x="58" y="176" width="64" height="44" rx="3" fill="#c5cae9"/>
+  <rect x="130" y="176" width="78" height="44" rx="3" fill="#c5cae9"/>
+  <rect x="44" y="222" width="178" height="8" fill="#3f51b5" opacity="0.85"/>
+  <text class="title" x="133" y="270" text-anchor="middle">Xiaomi Mi 10</text>
+  <text class="small" x="133" y="289" text-anchor="middle">Plasma on the phone's screen</text>
+  <text class="small" x="133" y="306" text-anchor="middle">USB-C port: USB 2.0 only</text>
+
+  <!-- Cable -->
+  <path class="line" d="M238 190 H318"/>
+  <text class="small" x="278" y="180" text-anchor="middle">one cable</text>
+
+  <!-- Dock -->
+  <rect class="box" x="318" y="118" width="160" height="144" rx="12"/>
+  <text class="title" x="398" y="178" text-anchor="middle">USB-C or</text>
+  <text class="title" x="398" y="198" text-anchor="middle">Thunderbolt dock</text>
+  <text class="small" x="398" y="222" text-anchor="middle">(any hub works too)</text>
+
+  <!-- Fan-out -->
+  <path class="line" d="M478 150 C520 150, 520 58, 560 58"/>
+  <path class="line" d="M478 170 C522 170, 522 118, 560 118"/>
+  <path class="line" d="M478 190 H560"/>
+  <path class="line" d="M478 210 C522 210, 522 262, 560 262"/>
+  <path class="bad" d="M478 230 C520 230, 520 322, 560 322"/>
+
+  <!-- Items -->
+  <circle class="ok" cx="574" cy="58" r="10"/>
+  <path d="M569 58 l4 4 l7 -8" stroke="#fff" stroke-width="2.4" fill="none"/>
+  <text class="item" x="594" y="63">Keyboard and mouse</text>
+
+  <circle class="ok" cx="574" cy="118" r="10"/>
+  <path d="M569 118 l4 4 l7 -8" stroke="#fff" stroke-width="2.4" fill="none"/>
+  <text class="item" x="594" y="123">Ethernet</text>
+
+  <circle class="ok" cx="574" cy="190" r="10"/>
+  <path d="M569 190 l4 4 l7 -8" stroke="#fff" stroke-width="2.4" fill="none"/>
+  <text class="item" x="594" y="195">USB drives</text>
+
+  <circle class="ok" cx="574" cy="262" r="10"/>
+  <path d="M569 262 l4 4 l7 -8" stroke="#fff" stroke-width="2.4" fill="none"/>
+  <text class="item" x="594" y="259">Power in</text>
+  <text class="small" x="594" y="277">charges the phone</text>
+
+  <circle class="no" cx="574" cy="322" r="10"/>
+  <path d="M569 317 l10 10 M579 317 l-10 10" stroke="#fff" stroke-width="2.4"/>
+  <text class="item" x="594" y="319">Monitor (HDMI / DP)</text>
+  <text class="small" x="594" y="337">no video: the phone has</text>
+  <text class="small" x="594" y="353">no DisplayPort on its USB-C</text>
+</svg>

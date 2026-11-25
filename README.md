@@ -1,5 +1,7 @@
 # Arch Linux ARM on the Xiaomi Mi 10
 
+**Documentation: [miercolesvd.github.io/mi10-arch-linux](https://miercolesvd.github.io/mi10-arch-linux/)**
+
 Arch Linux ARM with the KDE Plasma desktop (Wayland) for the Xiaomi Mi 10
 (`umi`, Snapdragon 865). A full desktop system with `pacman`, not a phone
 shell: plug the phone into a USB-C hub or dock for keyboard, mouse and
@@ -58,7 +60,8 @@ stock.
 
 3. The first boot takes longer while the file system grows to fill the
    partition. Plasma starts logged in as `user` (password `147147`). Change
-   the password right away: open Konsole and run `passwd`.
+   the password right away: open Konsole and run `passwd`. There is no root
+   password; use `sudo -i` with your own password.
 
 Without a keyboard, tap a text field to get Plasma's on-screen keyboard.
 

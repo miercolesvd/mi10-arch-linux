@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 210" width="780" height="210" role="img" aria-labelledby="t d">
+  <title id="t">How a kernel update reaches the boot partition</title>
+  <desc id="d">pacman -Syu installs the new kernel or device package. A pacman hook runs umi-update-boot, which rebuilds the initramfs with mkinitcpio, packs a new boot.img while keeping the old one as boot.img.old, then writes it to the boot partition and reads it back to check it. The next restart uses the new kernel.</desc>
+  <style>
+    text { font-family: -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; fill: #1f2937; }
+    .title { font-size: 14px; font-weight: 600; }
+    .small { font-size: 12px; fill: #4b5563; }
+    .mono { font-family: "Roboto Mono", "SFMono-Regular", Menlo, Consolas, monospace; font-size: 13px; font-weight: 600; }
+    .box { fill: #ffffff; stroke: #3f51b5; stroke-width: 2; }
+    .arrow { stroke: #3f51b5; stroke-width: 2.2; fill: none; marker-end: url(#a); }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#3f51b5"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="780" height="210" rx="14" fill="#f5f6fa"/>
+
+  <rect class="box" x="24" y="56" width="160" height="96" rx="10"/>
+  <text class="mono" x="104" y="88" text-anchor="middle">pacman -Syu</text>
+  <text class="small" x="104" y="112" text-anchor="middle">new kernel or</text>
+  <text class="small" x="104" y="129" text-anchor="middle">device package</text>
+
+  <rect class="box" x="214" y="56" width="166" height="96" rx="10"/>
+  <text class="mono" x="297" y="88" text-anchor="middle">umi-update-boot</text>
+  <text class="small" x="297" y="112" text-anchor="middle">run by a pacman hook;</text>
+  <text class="small" x="297" y="129" text-anchor="middle">builds the initramfs</text>
+
+  <rect class="box" x="410" y="56" width="160" height="96" rx="10"/>
+  <text class="mono" x="490" y="88" text-anchor="middle">/boot/boot.img</text>
+  <text class="small" x="490" y="112" text-anchor="middle">previous image kept</text>
+  <text class="small" x="490" y="129" text-anchor="middle">as boot.img.old</text>
+
+  <rect class="box" x="600" y="56" width="156" height="96" rx="10" style="fill:#e8eaf6"/>
+  <text class="title" x="678" y="88" text-anchor="middle">boot partition</text>
+  <text class="small" x="678" y="112" text-anchor="middle">written, then read</text>
+  <text class="small" x="678" y="129" text-anchor="middle">back and checked</text>
+
+  <path class="arrow" d="M184 104 H210"/>
+  <path class="arrow" d="M380 104 H406"/>
+  <path class="arrow" d="M570 104 H596"/>
+
+  <text class="small" x="390" y="186" text-anchor="middle">Restart the phone to use the new kernel.</text>
+</svg>

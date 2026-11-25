@@ -1,0 +1,74 @@
+site_name: Arch Linux ARM on the Xiaomi Mi 10
+site_description: Arch Linux ARM with KDE Plasma for the Xiaomi Mi 10 (umi, Snapdragon 865)
+site_url: https://miercolesvd.github.io/mi10-arch-linux/
+repo_url: https://github.com/miercolesvd/mi10-arch-linux
+repo_name: miercolesvd/mi10-arch-linux
+edit_uri: edit/main/docs/
+
+nav:
+  - Home: index.md
+  - Install: install.md
+  - Using it: using.md
+  - Updates: updates.md
+  - Hardware status: hardware.md
+  - Troubleshooting: troubleshooting.md
+  - Building: building.md
+  - Credits: credits.md
+
+theme:
+  name: material
+  icon:
+    logo: material/cellphone-link
+    repo: fontawesome/brands/github
+  favicon: assets/favicon.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+  features:
+    - navigation.footer
+    - navigation.top
+    - navigation.instant
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+    - toc.follow
+
+extra_css:
+  - assets/extra.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+copyright: Scripts and configuration MIT; kernel GPL-2.0. See Credits.
+
+exclude_docs: |
+  requirements.txt

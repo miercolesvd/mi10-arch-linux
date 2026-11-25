@@ -1,0 +1,30 @@
+/* Diagrams: centred, never wider than the text column */
+.md-typeset img.diagram {
+  display: block;
+  margin: 1.2em auto;
+  max-width: 100%;
+  border-radius: 0.4rem;
+}
+
+/* Screenshots: subtle frame so light screenshots stand out on light pages */
+.md-typeset img.screenshot {
+  display: block;
+  margin: 1em auto;
+  max-width: 100%;
+  border-radius: 0.4rem;
+  box-shadow: var(--md-shadow-z2);
+}
+
+/* Status words in tables */
+.md-typeset .ok { color: #2e7d32; font-weight: 600; }
+.md-typeset .no { color: #c62828; font-weight: 600; }
+.md-typeset .part { color: #b26a00; font-weight: 600; }
+[data-md-color-scheme="slate"] .md-typeset .ok { color: #81c784; }
+[data-md-color-scheme="slate"] .md-typeset .no { color: #ef9a9a; }
+[data-md-color-scheme="slate"] .md-typeset .part { color: #ffcc80; }
+
+/* Hero on the home page */
+.md-typeset .hero-lead {
+  font-size: 1.15em;
+  line-height: 1.6;
+}

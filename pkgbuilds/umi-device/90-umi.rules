@@ -5,3 +5,10 @@ ACTION=="add", SUBSYSTEM=="backlight", KERNEL=="umi-panel", ATTR{brightness}="15
 # The USB controller is dual role: its gadget side (the USB network link to a
 # PC) goes away while a hub or dock is plugged in. Re-attach it when it is back.
 ACTION=="add", SUBSYSTEM=="udc", RUN+="/usr/lib/umi/usb-gadget"
+
+# Hide the phone's own flash partitions from the desktop. Otherwise one click in
+# Dolphin mounts firmware, calibration and modem partitions read-write. USB
+# drives are not affected, and the Arch Linux partition (userdata) stays
+# visible. To look at the others read-only, see "The phone's other partitions"
+# in the docs.
+SUBSYSTEM=="block", DRIVERS=="ufshcd-qcom", ENV{ID_PART_ENTRY_NAME}!="userdata", ENV{UDISKS_IGNORE}="1"

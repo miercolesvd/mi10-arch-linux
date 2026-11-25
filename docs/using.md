@@ -131,3 +131,34 @@ To see which kernel and device packages you have:
 ```sh
 pacman -Q linux-xiaomi-umi umi-device umi-firmware
 ```
+
+## The phone's other partitions
+
+Arch Linux lives on `userdata`. The phone's flash has over 100 other
+partitions: firmware, calibration data, MIUI's own system (in `super`), the
+modem's storage and more. They're hidden from Dolphin, because one click there
+would mount them read-write. To look at them read-only:
+
+```sh
+curl -sL miercolesvd.github.io/mi10-arch-linux/parts.sh | sudo sh
+```
+
+Every partition with a filesystem appears under `/mnt/p/<name>`. Nothing on
+them changes: the mounts are read-only and ext4 journals aren't replayed.
+Unmount them again with `... | sudo sh -s umount`.
+
+!!! warning "Back them up before experimenting with the modem"
+
+    `modemst1`, `modemst2`, `fsg` and the `mdm1m9kefs*` partitions hold the
+    modem's own data, including the IMEI, and the modem writes to them while
+    it runs. A damaged copy can mean no mobile network. This copies every
+    partition except `super` and `userdata` to `~/partbackup`:
+
+    ```sh
+    curl -sL miercolesvd.github.io/mi10-arch-linux/parts.sh | sudo sh -s backup
+    ```
+
+    Then copy the folder to another computer. Don't share it: it contains
+    your IMEI, Wi-Fi and Bluetooth addresses and device keys.
+
+[Read the script](parts.sh) first if you like.

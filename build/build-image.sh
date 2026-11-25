@@ -42,9 +42,8 @@ step() { echo; echo "=== $(date -u +%H:%M:%S) $*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
 inroot() { arch-chroot "$ROOT" "$@"; }
 
-# Arch Linux ARM's mirror redirector sometimes sends a download to a mirror
-# that does not have the package yet (404). Refresh the databases, which
-# usually lands on another mirror, and try again.
+# A mirror can be caught mid-sync and fail a download. Refresh the databases
+# and try again.
 pac() {
 	local i
 	for i in 1 2 3; do
@@ -92,17 +91,19 @@ step "Updating the base system"
 cp "$ROOT/etc/pacman.conf" "$WORK/pacman.conf.orig"
 sed -i -e 's/^#\?ParallelDownloads.*/ParallelDownloads = 8/' \
 	-e '/^\[options\]/a DisableSandbox' "$ROOT/etc/pacman.conf"
-# The redirector picks one mirror by location, and that mirror can lag behind
-# (GitHub's runners kept landing on one that was missing a package). With more
-# Server lines, pacman tries the next mirror when a file is missing. Kept in
-# the image, where the phone gets the same benefit.
+# Not the mirror redirector: it sends each request to a different mirror, so
+# the package database can come from one that is ahead of the mirror a package
+# is then fetched from (404s on GitHub's runners). A fixed list keeps the
+# database and the packages from the same mirror; pacman moves on to the next
+# line only when a file is missing. Kept in the image for the same reason.
 cat > "$ROOT/etc/pacman.d/mirrorlist" <<'EOF'
-# Arch Linux ARM mirrors. The first line picks a mirror near you; if that
-# mirror is missing a file, pacman tries the next lines in order.
-Server = http://mirror.archlinuxarm.org/$arch/$repo
+# Arch Linux ARM mirrors, tried in order. Put one near you first if you like;
+# avoid the redirector (mirror.archlinuxarm.org): it mixes mirrors that are
+# at different points of a sync, which shows up as 404 errors.
 Server = http://de.mirror.archlinuxarm.org/$arch/$repo
 Server = http://fr.mirror.archlinuxarm.org/$arch/$repo
 Server = http://dk.mirror.archlinuxarm.org/$arch/$repo
+Server = http://mi.us.mirror.archlinuxarm.org/$arch/$repo
 Server = http://fl.us.mirror.archlinuxarm.org/$arch/$repo
 Server = http://ca.us.mirror.archlinuxarm.org/$arch/$repo
 Server = http://tw.mirror.archlinuxarm.org/$arch/$repo

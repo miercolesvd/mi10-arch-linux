@@ -67,8 +67,9 @@ Without a keyboard, tap a text field to get Plasma's on-screen keyboard.
 - **Dock or hub:** plug it in and keyboard, mouse, storage and Ethernet work.
   A powered dock also charges the phone. Everything shares one USB 2.0 link
   (480 Mbit/s).
-- **Landscape:** System Settings > Display & Monitor > Orientation, and set
-  Scale to about 200%.
+- **Landscape:** the first login turns the phone's screen to landscape
+  (90° counterclockwise) at 150 % scaling. Change it any time in System
+  Settings > Display & Monitor.
 - **From a PC over USB:** the phone is `172.16.42.1` on the USB cable;
   `ssh user@172.16.42.1`. SSH only listens there, not on Wi-Fi (delete
   `/etc/ssh/sshd_config.d/50-umi-usb.conf` to change that).
@@ -77,10 +78,28 @@ Without a keyboard, tap a text field to get Plasma's on-screen keyboard.
 
 ## Updates
 
-`sudo pacman -Syu` as on any Arch system. When the kernel, firmware or
-initramfs change, a pacman hook runs `umi-update-boot`, which builds a new
-boot image (`/boot/boot.img`, previous one kept as `/boot/boot.img.old`) and
-writes it to the `boot` partition. Run `sudo umi-update-boot` to do that by
+`sudo pacman -Syu` as on any Arch system. The Mi 10 packages (kernel,
+firmware, device support) come from this project's own pacman repository,
+`mi10`, which every build publishes as the
+[`packages` release](../../releases/tag/packages).
+
+Installs from build-6 don't have that repository yet. Add it once:
+
+```sh
+sudo tee -a /etc/pacman.conf <<'EOF'
+
+[mi10]
+SigLevel = Optional TrustAll
+Server = https://github.com/miercolesvd/mi10-arch-linux/releases/download/packages
+EOF
+sudo pacman -Syu
+```
+
+The packages are not signed; pacman downloads them over HTTPS from GitHub.
+
+When the kernel, firmware or initramfs change, a pacman hook runs
+`umi-update-boot`, which builds a new boot image (`/boot/boot.img`, previous
+one kept as `/boot/boot.img.old`) and writes it to the `boot` partition. Run `sudo umi-update-boot` to do that by
 hand, for example after editing the kernel command line in
 `/etc/kernel/cmdline`.
 

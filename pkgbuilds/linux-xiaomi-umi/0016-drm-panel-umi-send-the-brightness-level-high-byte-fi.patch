@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: mi10-arch <mi10-arch@localhost>
+Date: Wed, 25 Nov 2026 07:00:36 +0000
+Subject: [PATCH] drm/panel: umi: send the brightness level high byte first
+
+The panel takes DCS Set Display Brightness (0x51) as an 11-bit level
+with the high byte first; the stock kernel marks both Mi 10 panels
+"mi,mdss-dsi-bl-dcs-big-endian-type". The driver used
+mipi_dsi_dcs_set_display_brightness(), which sends the low byte first,
+so the panel saw (low << 8 | high): every level whose low byte is 8 or
+more clamped to full brightness, and levels such as 1024 (50 %) came
+out almost black.
+
+Use mipi_dsi_dcs_set_display_brightness_large(), which sends the high
+byte first.
+---
+ drivers/gpu/drm/panel/panel-xiaomi-umi.c | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/panel/panel-xiaomi-umi.c b/drivers/gpu/drm/panel/panel-xiaomi-umi.c
+index f1ded5b29..0dd151414 100644
+--- a/drivers/gpu/drm/panel/panel-xiaomi-umi.c
++++ b/drivers/gpu/drm/panel/panel-xiaomi-umi.c
+@@ -528,7 +528,13 @@ static int umi_panel_bl_update(struct backlight_device *bl)
+ 
+ 	level = clamp_t(u32, backlight_get_brightness(bl),
+ 			ctx->cfg.bl_min ?: 1, ctx->cfg.bl_max ?: 0x7ff);
+-	return mipi_dsi_dcs_set_display_brightness(ctx->dsi, level);
++	/*
++	 * The panel IC takes the 11-bit level high byte first (the stock
++	 * kernel marks both Mi 10 panels "mi,mdss-dsi-bl-dcs-big-endian-type").
++	 * The plain helper sends the low byte first, so most levels clamp to
++	 * full brightness and levels such as 1024 come out almost black.
++	 */
++	return mipi_dsi_dcs_set_display_brightness_large(ctx->dsi, level);
+ }
+ 
+ static const struct backlight_ops umi_panel_bl_ops = {
+@@ -578,7 +584,7 @@ static ssize_t umi_panel_kick_store(struct device *dev,
+ 	int level, ret;
+ 
+ 	level = backlight_get_brightness(ctx->bl);
+-	ret = mipi_dsi_dcs_set_display_brightness(ctx->dsi, level);
++	ret = mipi_dsi_dcs_set_display_brightness_large(ctx->dsi, level);
+ 	dev_info(dev, "kick brightness %d -> %d\n", level, ret);
+ 
+ 	return count;

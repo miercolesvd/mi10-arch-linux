@@ -1,4 +1,4 @@
-# The panel comes up at brightness 1 of 2047, which is black on this AMOLED.
+# The panel comes up at brightness 1 of 2047, the dimmest level.
 # Give the booted system a visible default until the desktop restores its own.
 ACTION=="add", SUBSYSTEM=="backlight", KERNEL=="umi-panel", ATTR{brightness}="1500"
 

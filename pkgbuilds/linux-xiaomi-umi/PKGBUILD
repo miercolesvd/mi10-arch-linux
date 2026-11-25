@@ -3,7 +3,8 @@
 # Patches 0001-0014 and the config are the ones of the Nura port
 # (miercolesvd/mi10-port, pmaports/device/testing/linux-xiaomi-umi), which in
 # turn come from the colorgarden/umi-mainline bring-up. 0015 makes the USB-C
-# port dual role so hubs, docks and keyboards work.
+# port dual role so hubs, docks and keyboards work; 0016 fixes the byte order
+# of the panel brightness, so the whole slider range works.
 #
 # The package installs the gzip kernel, the device tree and the modules under
 # /usr/lib/modules/<release>/. umi-device turns them into the Android boot
@@ -12,7 +13,7 @@
 pkgname=linux-xiaomi-umi
 _kver=6.12.94
 pkgver=$_kver
-pkgrel=1
+pkgrel=2
 pkgdesc="Close-to-mainline LTS kernel for the Xiaomi Mi 10 (umi)"
 arch=(aarch64)
 url="https://github.com/miercolesvd/mi10-arch-linux"
@@ -39,6 +40,7 @@ source=(
   0013-bus-mhi-host-pci_generic-max_msi_vectors-parameter.patch
   0014-regulator-add-the-Xiaomi-Mi-10-SDX55M-power-on-seque.patch
   0015-arm64-dts-qcom-umi-make-the-USB-C-port-dual-role.patch
+  0016-drm-panel-umi-send-the-brightness-level-high-byte-fi.patch
 )
 sha256sums=(
   'e998a232b9418db3301cb58468e291a4f41d6ab8306029b30d991f56251dc8d2'
@@ -58,6 +60,7 @@ sha256sums=(
   '5a904420de15c013385e10a6061f51380438c7e329084b10841a85188a197473'
   '597013bc5fdaf321c4561f9015fe7a617a2c78abe721e6dc96cd9531fad02e1e'
   '55500c8b83f1c1a13140cfe84f4662fff25c49670040e9b13b4f4c3fb55ef7fd'
+  '92103aa573f2040b4201e382d21736b04d104c935e81576583c9574212416255'
 )
 
 _make() {

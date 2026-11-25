@@ -98,6 +98,34 @@ jobs:
             --title "Mi 10 Arch Linux ARM (KDE Plasma) $tag" --notes-file notes.md \
             out/boot.img out/mi10-arch.img.zst.part* out/SHA256SUMS out/packages.txt
 
+      # The "packages" release is the mi10 pacman repository that installed
+      # phones update from (Server = .../releases/download/packages)
+      - name: Publish the package repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd out/repo
+          if ! gh release view packages >/dev/null 2>&1; then
+            printf '%s\n' \
+              'pacman repository for the Xiaomi Mi 10 packages (kernel, firmware,' \
+              'device support). Updated by every build. In /etc/pacman.conf:' \
+              '' \
+              '    [mi10]' \
+              '    SigLevel = Optional TrustAll' \
+              "    Server = https://github.com/${{ github.repository }}/releases/download/packages" \
+              > ../repo-notes.md
+            gh release create packages --target "${{ github.sha }}" --latest=false \
+              --title "Mi 10 package repository (pacman)" --notes-file ../repo-notes.md
+          fi
+          # packages first, then the databases that list them
+          gh release upload packages ./*.pkg.tar.* --clobber
+          gh release upload packages mi10.db mi10.db.tar.gz mi10.files mi10.files.tar.gz --clobber
+          # drop packages the databases no longer list
+          gh release view packages --json assets --jq '.assets[].name' | while read -r asset; do
+            [ -e "$asset" ] || gh release delete-asset packages "$asset" --yes
+          done
+          ls -la
+
       # Make the end of the log readable from the run's annotations (and the
       # checks API) without opening the full log
       - name: Show the end of the log

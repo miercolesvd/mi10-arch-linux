@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Mi 10 display defaults
+Comment=On the first login: landscape and 150 % scaling on the phone's screen
+Exec=/usr/lib/umi/display-defaults
+OnlyShowIn=KDE;
+NoDisplay=true

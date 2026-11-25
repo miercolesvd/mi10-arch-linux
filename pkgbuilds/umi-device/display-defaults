@@ -1,0 +1,31 @@
+#!/bin/sh
+# Xiaomi Mi 10: display defaults for each user's first Plasma login.
+#
+# Turns the phone's screen to landscape (90° counterclockwise, the fourth
+# Orientation button in System Settings > Display & Monitor) and sets 150 %
+# scaling. Runs once per user: a marker file keeps later logins from undoing
+# changes made in System Settings. Delete the marker to apply it again:
+#   rm ~/.config/umi-display-defaults.done
+
+marker="${XDG_CONFIG_HOME:-$HOME/.config}/umi-display-defaults.done"
+[ -e "$marker" ] && exit 0
+command -v kscreen-doctor >/dev/null 2>&1 || exit 0
+
+# The built-in panel is the DSI output. KWin may still be setting up outputs
+# right after login, so give it a few seconds.
+panel=""
+tries=0
+while [ -z "$panel" ] && [ "$tries" -lt 15 ]; do
+	panel=$(kscreen-doctor -o 2>/dev/null |
+		sed 's/\x1b\[[0-9;]*m//g' |
+		awk '$1 == "Output:" && $3 ~ /^DSI/ { print $3; exit }')
+	[ -n "$panel" ] && break
+	tries=$((tries + 1))
+	sleep 1
+done
+[ -n "$panel" ] || exit 0
+
+if kscreen-doctor "output.$panel.rotation.right" "output.$panel.scale.1.5"; then
+	mkdir -p "$(dirname "$marker")"
+	: > "$marker"
+fi

@@ -4,8 +4,8 @@
 
 pkgname=umi-device
 pkgver=1
-pkgrel=1
-pkgdesc="Xiaomi Mi 10 (umi) device support: boot image, initramfs, panel, sound, USB link"
+pkgrel=2
+pkgdesc="Xiaomi Mi 10 (umi) device support: boot image, initramfs, panel, sound, USB link, display defaults"
 arch=(aarch64)
 url="https://github.com/miercolesvd/mi10-arch-linux"
 license=(MIT)
@@ -43,6 +43,8 @@ source=(
   umi-usb.nmconnection
   sshd-umi-usb.conf
   sysctl-umi-usb.conf
+  display-defaults
+  umi-display-defaults.desktop
 )
 sha256sums=(
   'a3212579216b2b7677ce80ed1c0b984e5117f98256371ec1ae9535306d68f071'
@@ -50,8 +52,8 @@ sha256sums=(
   '30d2342ccc86eb11eb16f429a87ef91e818c42a49161b127c0bec58888c78746'
   '32ec1a63e1eef006abc5680aa86cf818904f1b21c8e071bdb130a3efb4986e77'
   '01676bfa3465f7deaf37feab1f41abe502c0672a292491de0b965e12d05d0e7a'
-  'ca22ba69051256c8608007196250c9fd562678cbde1d082c4317bc1d1b198ef6'
-  'add28860f338dd2b58746a665756ff345d90fa276c6912cf02ccc50ecd5bb78f'
+  '14093dc47dbea66db3327825502d53424df542f7e0701aa857cbddea100b3a7c'
+  'df09551159cbef5aa94eef221564ff89a595a2095dc1df40c0d4ad7f315e7560'
   '3afae5c641a8ce96a57b92cf4e670438f1b1b80d5401ca290677b0cdc8843e48'
   'f29d5ade496409f6129066eea5ab67faeb84b37d06d69d85d0b9ad9d966136d8'
   '08aa5928a5ed740f19f3451888a16657b1bccfe89c91050e6fe2401f600b3d2c'
@@ -60,6 +62,8 @@ sha256sums=(
   'dd6e6739ba237fd1d35600c9ed71ffe2631032f19fef35df16df2d38723fad37'
   'ad0edb8152575e6346a3e6fd9dc6abe82af4fb1694710c9ac32b4dff57860269'
   '226c78c91e97743497d264baeaa58789211fdcfc3ec58664c4461d3d51515583'
+  'eaa6fee92f5ec5387b9ad72743a6475763a84314e628074cb0aa2ddd06e9dded'
+  'acd1f14a5dc5596b181937307178edd72b5d806c10bcc62926e9e1efb6090ce4'
 )
 
 package() {
@@ -87,4 +91,8 @@ package() {
   install -Dm600 umi-usb.nmconnection "$pkgdir/etc/NetworkManager/system-connections/umi-usb.nmconnection"
   install -Dm644 sshd-umi-usb.conf "$pkgdir/etc/ssh/sshd_config.d/50-umi-usb.conf"
   install -Dm644 sysctl-umi-usb.conf "$pkgdir/usr/lib/sysctl.d/50-umi-usb.conf"
+
+  # First Plasma login: landscape and 150 % scaling
+  install -Dm755 display-defaults "$pkgdir/usr/lib/umi/display-defaults"
+  install -Dm644 umi-display-defaults.desktop "$pkgdir/etc/xdg/autostart/umi-display-defaults.desktop"
 }

@@ -10,6 +10,8 @@
 # Produces in OUTDIR:
 #   boot.img        kernel + initramfs + device tree  -> "boot" partition
 #   mi10-arch.img   root filesystem (sparse ext4)     -> "userdata" partition
+#   repo/           the Mi 10 packages as a pacman repository ("mi10"), which
+#                   installed systems update from
 #   packages.txt    installed package versions
 #   SHA256SUMS
 #
@@ -18,6 +20,8 @@
 #   KERNEL_PKG_DIR  keeps the built kernel package between runs: used if it
 #                   holds one for the current version, filled otherwise
 #   WORK            scratch directory (default /var/tmp/mi10-build)
+#   REPO_SERVER     where installed systems download the mi10 repository
+#                   (default: this project's "packages" GitHub release)
 
 set -euo pipefail
 
@@ -32,6 +36,7 @@ ALARM_TARBALL=ArchLinuxARM-aarch64-latest.tar.gz
 # is checked against the Arch Linux ARM signing key below either way.
 ALARM_URL=http://os.archlinuxarm.org/os/$ALARM_TARBALL
 USERNAME=user
+REPO_SERVER=${REPO_SERVER:-https://github.com/miercolesvd/mi10-arch-linux/releases/download/packages}
 
 step() { echo; echo "=== $(date -u +%H:%M:%S) $*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -143,6 +148,14 @@ ls -la "$ROOT/build/out"
 step "Installing KDE Plasma and the desktop packages"
 pac -S --needed --noconfirm "${PACKAGES[@]}"
 
+step "Creating the mi10 package repository"
+inroot sh -c 'cd /build/out && repo-add -q mi10.db.tar.gz ./*.pkg.tar.*'
+rm -rf "$OUT/repo"
+mkdir -p "$OUT/repo"
+# copy the files behind repo-add's mi10.db / mi10.files links
+cp -L "$ROOT"/build/out/*.pkg.tar.* "$ROOT"/build/out/mi10.{db,files}{,.tar.gz} "$OUT/repo/"
+ls -la "$OUT/repo"
+
 step "Installing the Mi 10 packages (builds boot.img through the pacman hook)"
 mapfile -t LOCAL_PKGS < <(cd "$ROOT" && ls build/out/*.pkg.tar.* | sed 's|^|/|')
 pac -U --noconfirm "${LOCAL_PKGS[@]}"
@@ -219,6 +232,14 @@ inroot userdel -r builder 2>/dev/null || true
 rm -rf "$ROOT/build" "$ROOT/etc/makepkg.conf.d/zz-mi10-build.conf"
 cp "$WORK/pacman.conf.orig" "$ROOT/etc/pacman.conf"
 sed -i 's/^#\?ParallelDownloads.*/ParallelDownloads = 5/' "$ROOT/etc/pacman.conf"
+cat >> "$ROOT/etc/pacman.conf" <<EOF
+
+# Xiaomi Mi 10 packages: kernel, firmware, device support. Built and published
+# by github.com/miercolesvd/mi10-arch-linux; not signed, downloaded over HTTPS.
+[mi10]
+SigLevel = Optional TrustAll
+Server = $REPO_SERVER
+EOF
 yes | inroot pacman -Scc >/dev/null || true
 # A fresh machine-id is created on the first boot
 : > "$ROOT/etc/machine-id"

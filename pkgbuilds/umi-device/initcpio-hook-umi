@@ -6,8 +6,8 @@
 #    link is fine. The panel driver exposes "repower" to send it again; it is
 #    idempotent and does not touch brightness. The DSI link must be up, so
 #    unblank the framebuffer first.
-# 2. The panel driver starts at brightness 1 of 2047, and this AMOLED stays
-#    black up to roughly 400. Raise it to 1500.
+# 2. The panel driver starts at brightness 1 of 2047, the dimmest level.
+#    Raise it to 1500.
 
 run_hook() {
     local panel=/sys/bus/mipi-dsi/devices/ae94000.dsi.0

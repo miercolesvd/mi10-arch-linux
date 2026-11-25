@@ -42,14 +42,42 @@ address automatically:
 ssh user@172.16.42.1
 ```
 
-SSH only listens on that USB link, not on Wi-Fi or Ethernet. To allow it
-everywhere, delete `/etc/ssh/sshd_config.d/50-umi-usb.conf` and run
-`sudo systemctl restart sshd`.
+SSH only listens on that USB link, not on Wi-Fi or Ethernet (see below to
+change that).
 
 !!! note
 
     The USB link is new in the Arch build and hasn't been tried on a phone
     yet. If it doesn't show up, see [Troubleshooting](troubleshooting.md).
+
+## SSH over Wi-Fi or Ethernet
+
+Change the default password first (`passwd`): anyone on the same network
+could otherwise log in with `147147`. Then:
+
+```sh
+sudo sed -i 's/^ListenAddress/#ListenAddress/' /etc/ssh/sshd_config.d/50-umi-usb.conf
+sudo systemctl restart sshd
+ip -4 -br addr        # the phone's address, on wlan0 (Wi-Fi) or the dock's Ethernet
+```
+
+From the computer: `ssh user@<that address>`.
+
+Edit the file rather than deleting it: a deleted file comes back with the next
+`umi-device` update, an edited one stays as you left it.
+
+Logging in with a key is safer than a password:
+
+```sh
+ssh-copy-id user@<address>      # on the computer, once
+```
+
+After that, you can turn password logins off on the phone:
+
+```sh
+echo 'PasswordAuthentication no' | sudo tee /etc/ssh/sshd_config.d/60-keys-only.conf
+sudo systemctl restart sshd
+```
 
 ## Networks
 

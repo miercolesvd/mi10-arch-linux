@@ -74,8 +74,9 @@ Without a keyboard, tap a text field to get Plasma's on-screen keyboard.
   (90° counterclockwise) at 150 % scaling. Change it any time in System
   Settings > Display & Monitor.
 - **From a PC over USB:** the phone is `172.16.42.1` on the USB cable;
-  `ssh user@172.16.42.1`. SSH only listens there, not on Wi-Fi (delete
-  `/etc/ssh/sshd_config.d/50-umi-usb.conf` to change that).
+  `ssh user@172.16.42.1`. SSH only listens there, not on Wi-Fi (comment out
+  the `ListenAddress` line in `/etc/ssh/sshd_config.d/50-umi-usb.conf` to
+  change that).
 - **Suspend** is masked because it has never been tried on this port. To try
   it: `sudo systemctl unmask sleep.target suspend.target`.
 

@@ -92,6 +92,21 @@ step "Updating the base system"
 cp "$ROOT/etc/pacman.conf" "$WORK/pacman.conf.orig"
 sed -i -e 's/^#\?ParallelDownloads.*/ParallelDownloads = 8/' \
 	-e '/^\[options\]/a DisableSandbox' "$ROOT/etc/pacman.conf"
+# The redirector picks one mirror by location, and that mirror can lag behind
+# (GitHub's runners kept landing on one that was missing a package). With more
+# Server lines, pacman tries the next mirror when a file is missing. Kept in
+# the image, where the phone gets the same benefit.
+cat > "$ROOT/etc/pacman.d/mirrorlist" <<'EOF'
+# Arch Linux ARM mirrors. The first line picks a mirror near you; if that
+# mirror is missing a file, pacman tries the next lines in order.
+Server = http://mirror.archlinuxarm.org/$arch/$repo
+Server = http://de.mirror.archlinuxarm.org/$arch/$repo
+Server = http://fr.mirror.archlinuxarm.org/$arch/$repo
+Server = http://dk.mirror.archlinuxarm.org/$arch/$repo
+Server = http://fl.us.mirror.archlinuxarm.org/$arch/$repo
+Server = http://ca.us.mirror.archlinuxarm.org/$arch/$repo
+Server = http://tw.mirror.archlinuxarm.org/$arch/$repo
+EOF
 inroot pacman-key --init
 inroot pacman-key --populate archlinuxarm
 pac -Syu --noconfirm

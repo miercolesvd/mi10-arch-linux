@@ -132,6 +132,32 @@ To see which kernel and device packages you have:
 pacman -Q linux-xiaomi-umi umi-device umi-firmware
 ```
 
+## Boot logo
+
+The phone still shows Xiaomi's logo while it starts. To replace it with a
+Linux one:
+
+```sh
+curl -sL miercolesvd.github.io/mi10-arch-linux/bootlogo.py | sudo python3 -
+```
+
+![The replacement boot screens: normal and with the unlocked-bootloader padlock](assets/bootlogo.png){ width="360" }
+
+The `logo` partition holds 8 pictures; the script replaces the six with the
+Mi logo, each with a picture of exactly the same size and format. The padlock
+on the unlocked screens stays: it's the bootloader's warning that the phone
+is unlocked. The fastboot and error screens are kept as they are.
+
+Before changing anything, it saves the partition to `~/logo-original.img`.
+Xiaomi's logo comes back with:
+
+```sh
+curl -sL miercolesvd.github.io/mi10-arch-linux/bootlogo.py | sudo python3 - restore
+```
+
+or, from a PC, `fastboot flash logo logo-original.img`.
+[Read the script](bootlogo.py) first if you like.
+
 ## The phone's other partitions
 
 Arch Linux lives on `userdata`. The phone's flash has over 100 other

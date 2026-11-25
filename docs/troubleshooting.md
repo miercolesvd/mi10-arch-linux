@@ -50,10 +50,21 @@ See [Updates → If the phone doesn't start](updates.md#if-the-phone-doesnt-star
 
 ## Collecting logs for a bug report
 
+One line in Konsole:
+
+```sh
+curl -sL miercolesvd.github.io/mi10-arch-linux/diag.sh | sudo sh
+```
+
+It writes `mi10-diag.txt` to your home folder: modem start-up, battery and
+charger state, and kernel messages. It only reads, it changes nothing.
+([Read the script](diag.sh) first if you like.)
+
+For everything else:
+
 ```sh
 journalctl -b > journal.txt          # this boot
 sudo dmesg > dmesg.txt               # kernel messages
-pacman -Q > packages.txt             # installed versions
 ```
 
 Attach the files to an

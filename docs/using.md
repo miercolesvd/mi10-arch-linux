@@ -53,18 +53,25 @@ change that).
 ## SSH over Wi-Fi or Ethernet
 
 Change the default password first (`passwd`): anyone on the same network
-could otherwise log in with `147147`. Then:
+could otherwise log in with `147147`. Then one line in Konsole:
 
 ```sh
-sudo sed -i 's/^ListenAddress/#ListenAddress/' /etc/ssh/sshd_config.d/50-umi-usb.conf
-sudo systemctl restart sshd
-ip -4 -br addr        # the phone's address, on wlan0 (Wi-Fi) or the dock's Ethernet
+curl -sL miercolesvd.github.io/mi10-arch-linux/ssh.sh | sudo sh
 ```
 
-From the computer: `ssh user@<that address>`.
+It opens SSH on every network and prints the exact `ssh user@…` line to use
+from your computer. To go back to the USB cable only:
 
-Edit the file rather than deleting it: a deleted file comes back with the next
-`umi-device` update, an edited one stays as you left it.
+```sh
+curl -sL miercolesvd.github.io/mi10-arch-linux/ssh.sh | sudo sh -s off
+```
+
+??? note "What the script does"
+
+    It comments out the `ListenAddress` line in
+    `/etc/ssh/sshd_config.d/50-umi-usb.conf` and restarts `sshd`
+    ([read it](ssh.sh)). An edited file stays as you left it through
+    updates; a deleted one would come back with the next `umi-device` update.
 
 Logging in with a key is safer than a password:
 

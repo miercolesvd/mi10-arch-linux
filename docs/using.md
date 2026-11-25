@@ -134,29 +134,29 @@ pacman -Q linux-xiaomi-umi umi-device umi-firmware
 
 ## Boot logo
 
-The phone still shows Xiaomi's logo while it starts. To replace it with a
-Linux one:
+The phone still shows Xiaomi's logo while it starts, and Xiaomi's fastboot
+screen. [xiaomi-logo-changer](https://github.com/miercolesv/xiaomi-logo-changer)
+replaces them with one of seven Linux-style designs, or your own picture:
 
 ```sh
-curl -sL miercolesvd.github.io/mi10-arch-linux/bootlogo.py | sudo python3 -
+sudo pacman -S python-pillow
+curl -sL https://raw.githubusercontent.com/miercolesv/xiaomi-logo-changer/main/logo_changer.py | sudo python3 - install --redraw-padlock
 ```
 
 ![The replacement boot screens: normal and with the unlocked-bootloader padlock](assets/bootlogo.png){ width="360" }
 
-The `logo` partition holds 8 pictures; the script replaces the six with the
-Mi logo, each with a picture of exactly the same size and format. The padlock
-on the unlocked screens stays: it's the bootloader's warning that the phone
-is unlocked. The fastboot and error screens are kept as they are.
-
-Before changing anything, it saves the partition to `~/logo-original.img`.
-Xiaomi's logo comes back with:
+Add `--design NAME` for another design (`terminal`, `outline`, `gradient`,
+`amber`, `console`, `status`; the project page shows them all). Only the
+pictures in the `logo` partition change, each at exactly its original size
+and position. The first run saves the partition to `~/logo-original.img`;
+later runs always draw on that original, so switching designs is just
+another `install`. Xiaomi's logo comes back with:
 
 ```sh
-curl -sL miercolesvd.github.io/mi10-arch-linux/bootlogo.py | sudo python3 - restore
+curl -sL https://raw.githubusercontent.com/miercolesv/xiaomi-logo-changer/main/logo_changer.py | sudo python3 - restore
 ```
 
 or, from a PC, `fastboot flash logo logo-original.img`.
-[Read the script](bootlogo.py) first if you like.
 
 ## The phone's other partitions
 
